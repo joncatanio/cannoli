@@ -1,0 +1,6 @@
+[package]
+name = "cannoli"
+version = "0.1.0"
+authors = ["Jon Catanio <joncatanio@gmail.com>"]
+
+[dependencies]
