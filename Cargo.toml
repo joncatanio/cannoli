@@ -1,6 +1,11 @@
 [package]
 name = "cannoli"
 version = "0.1.0"
-authors = ["Jon Catanio <joncatanio@gmail.com>"]
+authors = ["Jon Catanio <joncatanio@gmail.com>",
+   "Aaron Keen <aaronkeen@gmail.com"]
 
 [dependencies]
+unicode-segmentation = "0.1.2"
+unicode_names = { git = 'https://github.com/antifuchs/unicode_names', branch = 'fix-for-rust-1-10' }
+regex = "0.1.41"
+lazy_static = "0.1.15"
