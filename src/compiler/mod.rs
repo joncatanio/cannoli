@@ -1,4 +1,5 @@
-pub fn compile(var: Option<bool>) -> Result<u32, bool> {
-    println!("Compiling! var is {:?}", var);
-    Ok(15)
+use super::parser::ast::Ast;
+
+pub fn compile(ast: Option<Ast>) {
+    unimplemented!();
 }

@@ -16,7 +16,5 @@ fn main() {
     let l = Lexer::new(chars);
 
     let ast = parser::parse_file_input(l);
-    let result = compiler::compile(ast);
-
-    println!("Compilation result... {:?}", result);
+    compiler::compile(ast);
 }
