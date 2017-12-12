@@ -1,5 +1,5 @@
 use super::parser::ast::Ast;
 
-pub fn compile(ast: Option<Ast>) {
+pub fn compile(ast: Ast) {
     unimplemented!();
 }

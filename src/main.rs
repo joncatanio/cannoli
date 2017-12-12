@@ -12,9 +12,10 @@ use lexer::Lexer;
 fn main() {
     println!("Welcome to the Cannoli Compiler!");
 
-    let chars = "'\\007'\n'\\7'\n'\\175'\n'\\x07'\n'\\1750'\n";
+    let chars = "'abc' \"def\" \\\n'123'\n";
     let l = Lexer::new(chars);
 
     let ast = parser::parse_file_input(l);
+    println!("AST: {:?}", ast);
     compiler::compile(ast);
 }
