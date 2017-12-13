@@ -14,7 +14,9 @@ pub fn get_token(opt: &Option<(usize, ResultToken)>) -> Token {
  * a given rule. */
 pub fn valid_simple_stmt(token: &Token) -> bool {
     match *token {
-        Token::Pass => true,
+        Token::Pass     => true,
+        Token::Global   => true,
+        Token::Nonlocal => true,
         _ => false
     }
 }

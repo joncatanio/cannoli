@@ -1,14 +1,17 @@
 // Abstract Syntax Tree definitions
 
 #[derive(Debug)]
+pub enum Declaration {}
+
+#[derive(Debug)]
 pub enum SmallStatement {
     ExprStatement,
     DelStatement,
     PassStatement,
     FlowStatement,
     ImportStatement,
-    GlobalStatement,
-    NonLocalStatement,
+    GlobalStatement(Vec<String>),
+    NonlocalStatement(Vec<String>),
     AssertStatement
 }
 
