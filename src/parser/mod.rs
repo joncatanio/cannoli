@@ -12,15 +12,16 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>,
 
 fn parse_small_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, SmallStatement) {
-    unimplemented!()
+    let token = util::get_token(&opt);
+
+    match token {
+        Token::Pass => (stream.next(), SmallStatement::PassStatement),
+        _ => panic!("expected 'small_stmt', found {:?}", token)
+    }
 }
 
 fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
-    if opt.is_none() {
-        panic!("unexpected 'EOF'");
-    }
-
     let (next_opt1, small_stmt) = parse_small_stmt(opt, &mut stream);
     let next_token1 = util::get_token(&next_opt1);
 
@@ -34,15 +35,15 @@ fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
                 Token::Newline => {
                     (stream.next(), Statement::SimpleStatement(vec![small_stmt]))
                 },
-                token => {
+                _ => {
                     let (next_opt3, stmt) =
                         parse_simple_stmt(next_opt2, stream);
                     let mut v = match stmt {
                         Statement::SimpleStatement(stmts) => stmts,
-                        _ => panic!("SimpleStatement not found")
+                        _ => panic!("invalid enum, found {:?}", stmt)
                     };
 
-                    v.insert(1, small_stmt);
+                    v.insert(0, small_stmt);
                     (next_opt3, Statement::SimpleStatement(v))
                 }
             }
@@ -58,10 +59,6 @@ fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
 
 fn parse_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
-    if opt.is_none() {
-        panic!("unexpected 'EOF'");
-    }
-
     let token = util::get_token(&opt);
 
     // (simple_stmt | compound_stmt)
@@ -87,7 +84,7 @@ fn parse_file_input(opt: Option<(usize, ResultToken)>,
             let (next_opt2, Ast::FileInput(mut v)) =
                 parse_file_input(next_opt1, &mut stream);
 
-            v.insert(1, tree);
+            v.insert(0, tree);
             (next_opt2, Ast::FileInput(v))
         }
     }
