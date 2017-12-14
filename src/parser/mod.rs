@@ -29,23 +29,23 @@ fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>,
     let token = util::get_token(&opt);
 
     match token {
-        Token::Identifier(s) => {
+        Token::Identifier(name) => {
             let opt = stream.next();
             let token = util::get_token(&opt);
 
             match token {
                 Token::Comma => {
-                    let (opt, small_stmt) =
+                    let (opt, stmt) =
                         parse_nonlocal_stmt(stream.next(), stream);
-                    let mut v = match small_stmt {
-                        Statement::NonlocalStatement(ids) => ids,
-                        _ => panic!("invalid enum, found {:?}", small_stmt)
+                    let mut names = match stmt {
+                        Statement::NonlocalStatement { names } => names,
+                        _ => panic!("invalid enum, found {:?}", stmt)
                     };
 
-                    v.insert(0, s);
-                    (opt, Statement::NonlocalStatement(v))
+                    names.insert(0, name);
+                    (opt, Statement::NonlocalStatement { names })
                 },
-                _ => (opt, Statement::NonlocalStatement(vec![s]))
+                _ => (opt, Statement::NonlocalStatement { names: vec![name] })
             }
         }
         _ => panic!("expected 'identifier', found '{:?}'", token)
@@ -57,23 +57,22 @@ fn parse_global_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     let token = util::get_token(&opt);
 
     match token {
-        Token::Identifier(s) => {
+        Token::Identifier(name) => {
             let opt = stream.next();
             let token = util::get_token(&opt);
 
             match token {
                 Token::Comma => {
-                    let (opt, small_stmt) =
-                        parse_global_stmt(stream.next(), stream);
-                    let mut v = match small_stmt {
-                        Statement::GlobalStatement(ids) => ids,
-                        _ => panic!("invalid enum, found {:?}", small_stmt)
+                    let (opt, stmt) = parse_global_stmt(stream.next(), stream);
+                    let mut names = match stmt {
+                        Statement::GlobalStatement { names } => names,
+                        _ => panic!("invalid enum, found {:?}", stmt)
                     };
 
-                    v.insert(0, s);
-                    (opt, Statement::GlobalStatement(v))
+                    names.insert(0, name);
+                    (opt, Statement::GlobalStatement { names })
                 },
-                _ => (opt, Statement::GlobalStatement(vec![s]))
+                _ => (opt, Statement::GlobalStatement { names: vec![name] })
             }
         },
         _ => panic!("expected 'identifier', found '{:?}'", token)
@@ -96,7 +95,7 @@ fn parse_small_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
 }
 
 fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+    -> (Option<(usize, ResultToken)>, Vec<Statement>) {
     let (opt, small_stmt) = parse_small_stmt(opt, &mut stream);
     let token = util::get_token(&opt);
 
@@ -107,27 +106,17 @@ fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
             let token = util::get_token(&opt);
 
             match token {
-                Token::Newline => {
-                    (
-                        stream.next(),
-                        Statement::SimpleStatement(vec![small_stmt])
-                    )
-                },
+                Token::Newline => (stream.next(), vec![small_stmt]),
                 _ => {
-                    let (opt, stmt) =
-                        parse_simple_stmt(opt, stream);
-                    let mut v = match stmt {
-                        Statement::SimpleStatement(stmts) => stmts,
-                        _ => panic!("invalid enum, found {:?}", stmt)
-                    };
+                    let (opt, mut stmts) = parse_simple_stmt(opt, stream);
 
-                    v.insert(0, small_stmt);
-                    (opt, Statement::SimpleStatement(v))
+                    stmts.insert(0, small_stmt);
+                    (opt, stmts)
                 }
             }
         },
         Token::Newline => {
-            (stream.next(), Statement::SimpleStatement(vec![small_stmt]))
+            (stream.next(), vec![small_stmt])
         },
         bad_token => {
             panic!("expected ';' or '\\n', found '{:?}'", bad_token);
@@ -141,21 +130,21 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>,
 }
 
 fn parse_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+    -> (Option<(usize, ResultToken)>, Vec<Statement>) {
     let token = util::get_token(&opt);
 
-    // (simple_stmt | compound_stmt)
     if util::valid_simple_stmt(&token) {
         parse_simple_stmt(opt, &mut stream)
     } else {
-        parse_compound_stmt(opt, &mut stream)
+        let (opt, stmt) = parse_compound_stmt(opt, &mut stream);
+        (opt, vec![stmt])
     }
 }
 
 fn parse_file_input(opt: Option<(usize, ResultToken)>,
     mut stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Ast) {
     if opt.is_none() {
-        return (opt, Ast::FileInput(vec![]));
+        return (opt, Ast::Module { body: vec![] });
     }
 
     let token = util::get_token(&opt);
@@ -163,12 +152,12 @@ fn parse_file_input(opt: Option<(usize, ResultToken)>,
     match token {
         Token::Newline => parse_file_input(stream.next(), &mut stream),
         _ => {
-            let (opt, tree) = parse_stmt(opt, &mut stream);
-            let (opt, Ast::FileInput(mut v)) =
+            let (opt, mut stmt_vec) = parse_stmt(opt, &mut stream);
+            let (opt, Ast::Module { body }) =
                 parse_file_input(opt, &mut stream);
 
-            v.insert(0, tree);
-            (opt, Ast::FileInput(v))
+            stmt_vec.extend(body);
+            (opt, Ast::Module { body: stmt_vec })
         }
     }
 }
