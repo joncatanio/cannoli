@@ -12,11 +12,19 @@ pub fn get_token(opt: &Option<(usize, ResultToken)>) -> Token {
 
 /* Token validation functions to determine if a starting token is found for
  * a given rule. */
+pub fn valid_flow_stmt(token: &Token) -> bool {
+    match *token {
+        Token::Break    => true,
+        Token::Continue => true,
+        _ => false
+    }
+}
+
 pub fn valid_simple_stmt(token: &Token) -> bool {
     match *token {
         Token::Pass     => true,
         Token::Global   => true,
         Token::Nonlocal => true,
-        _ => false
+        _ => valid_flow_stmt(token)
     }
 }

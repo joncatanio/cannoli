@@ -1,24 +1,27 @@
 // Abstract Syntax Tree definitions
 
 #[derive(Debug)]
-pub enum Declaration {}
-
-#[derive(Debug)]
-pub enum SmallStatement {
-    ExprStatement,
-    DelStatement,
-    PassStatement,
-    FlowStatement,
-    ImportStatement,
-    GlobalStatement(Vec<String>),
-    NonlocalStatement(Vec<String>),
-    AssertStatement
+pub enum Expression {
+    NumExpression(usize)
 }
 
 #[derive(Debug)]
 pub enum Statement {
-    SimpleStatement(Vec<SmallStatement>),
-    CompoundStatement
+    // Main Statement
+    SimpleStatement(Vec<Statement>),
+    CompoundStatement,
+    // Small Statements
+    ExprStatement,
+    DelStatement,
+    PassStatement,
+    ImportStatement,
+    GlobalStatement(Vec<String>),
+    NonlocalStatement(Vec<String>),
+    AssertStatement,
+    // Flow Statements
+    BreakStatement,
+    ContinueStatement,
+    ReturnStatement(Option<Expression>)
 }
 
 #[derive(Debug)]

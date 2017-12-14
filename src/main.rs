@@ -10,7 +10,6 @@ pub mod compiler;
 
 use lexer::Lexer;
 use clap::{Arg, App};
-use std::io;
 use std::io::prelude::*;
 use std::fs::File;
 

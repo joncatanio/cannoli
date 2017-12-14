@@ -5,13 +5,27 @@ use super::lexer::{Lexer, ResultToken};
 use super::lexer::tokens::Token;
 use self::ast::*;
 
-fn parse_compound_stmt(opt: Option<(usize, ResultToken)>,
-    mut stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_return_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
     unimplemented!()
 }
 
+fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let token = util::get_token(&opt);
+
+    match token {
+        Token::Break    => (stream.next(), Statement::BreakStatement),
+        Token::Continue => (stream.next(), Statement::ContinueStatement),
+        Token::Return   => parse_return_stmt(stream.next(), stream),
+        Token::Raise    => unimplemented!(),
+        Token::Yield    => unimplemented!(),
+        _ => unimplemented!()
+    }
+}
+
 fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>,
-    mut stream: &mut Lexer) -> (Option<(usize, ResultToken)>, SmallStatement) {
+    mut stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Statement) {
     let token = util::get_token(&opt);
 
     match token {
@@ -24,14 +38,14 @@ fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>,
                     let (opt, small_stmt) =
                         parse_nonlocal_stmt(stream.next(), stream);
                     let mut v = match small_stmt {
-                        SmallStatement::NonlocalStatement(ids) => ids,
+                        Statement::NonlocalStatement(ids) => ids,
                         _ => panic!("invalid enum, found {:?}", small_stmt)
                     };
 
                     v.insert(0, s);
-                    (opt, SmallStatement::NonlocalStatement(v))
+                    (opt, Statement::NonlocalStatement(v))
                 },
-                _ => (opt, SmallStatement::NonlocalStatement(vec![s]))
+                _ => (opt, Statement::NonlocalStatement(vec![s]))
             }
         }
         _ => panic!("expected 'identifier', found '{:?}'", token)
@@ -39,7 +53,7 @@ fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>,
 }
 
 fn parse_global_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, SmallStatement) {
+    -> (Option<(usize, ResultToken)>, Statement) {
     let token = util::get_token(&opt);
 
     match token {
@@ -52,14 +66,14 @@ fn parse_global_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
                     let (opt, small_stmt) =
                         parse_global_stmt(stream.next(), stream);
                     let mut v = match small_stmt {
-                        SmallStatement::GlobalStatement(ids) => ids,
+                        Statement::GlobalStatement(ids) => ids,
                         _ => panic!("invalid enum, found {:?}", small_stmt)
                     };
 
                     v.insert(0, s);
-                    (opt, SmallStatement::GlobalStatement(v))
+                    (opt, Statement::GlobalStatement(v))
                 },
-                _ => (opt, SmallStatement::GlobalStatement(vec![s]))
+                _ => (opt, Statement::GlobalStatement(vec![s]))
             }
         },
         _ => panic!("expected 'identifier', found '{:?}'", token)
@@ -67,14 +81,17 @@ fn parse_global_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
 }
 
 fn parse_small_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, SmallStatement) {
+    -> (Option<(usize, ResultToken)>, Statement) {
     let token = util::get_token(&opt);
 
     match token {
-        Token::Pass => (stream.next(), SmallStatement::PassStatement),
+        Token::Pass => (stream.next(), Statement::PassStatement),
         Token::Global => parse_global_stmt(stream.next(), stream),
         Token::Nonlocal => parse_nonlocal_stmt(stream.next(), stream),
-        _ => panic!("expected 'small_stmt', found {:?}", token)
+        ref token if util::valid_flow_stmt(&token) => {
+            parse_flow_stmt(opt, stream)
+        },
+        _ => unimplemented!()
     }
 }
 
@@ -91,7 +108,10 @@ fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
 
             match token {
                 Token::Newline => {
-                    (stream.next(), Statement::SimpleStatement(vec![small_stmt]))
+                    (
+                        stream.next(),
+                        Statement::SimpleStatement(vec![small_stmt])
+                    )
                 },
                 _ => {
                     let (opt, stmt) =
@@ -113,6 +133,11 @@ fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
             panic!("expected ';' or '\\n', found '{:?}'", bad_token);
         }
     }
+}
+
+fn parse_compound_stmt(opt: Option<(usize, ResultToken)>,
+    mut stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Statement) {
+    unimplemented!()
 }
 
 fn parse_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
