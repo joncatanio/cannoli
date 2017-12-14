@@ -7,15 +7,15 @@ pub enum Ast {
 
 #[derive(Debug)]
 pub enum Statement {
-    GlobalStatement { names: Vec<String> },
-    NonlocalStatement { names: Vec<String> },
-    PassStatement,
-    BreakStatement,
-    ContinueStatement,
-    ReturnStatement { value: Option<Expression> }
+    Global { names: Vec<String> },
+    Nonlocal { names: Vec<String> },
+    Pass,
+    Break,
+    Continue,
+    Return { value: Option<Expression> }
 }
 
 #[derive(Debug)]
 pub enum Expression {
-    NumExpression(usize)
+    Num(usize)
 }
