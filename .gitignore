@@ -4,3 +4,7 @@ Cargo.lock
 
 # Ignore Vim swap files
 *.swp
+
+# MacOS specific files
+.DS_Store
+__MACOSX/
