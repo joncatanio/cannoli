@@ -12,6 +12,15 @@ pub fn get_token(opt: &Option<(usize, ResultToken)>) -> Token {
 
 /* Token validation functions to determine if a starting token is found for
  * a given rule. */
+pub fn valid_simple_stmt(token: &Token) -> bool {
+    match *token {
+        Token::Pass     => true,
+        Token::Global   => true,
+        Token::Nonlocal => true,
+        _ => valid_flow_stmt(token)
+    }
+}
+
 pub fn valid_flow_stmt(token: &Token) -> bool {
     match *token {
         Token::Break    => true,
@@ -20,11 +29,34 @@ pub fn valid_flow_stmt(token: &Token) -> bool {
     }
 }
 
-pub fn valid_simple_stmt(token: &Token) -> bool {
+pub fn valid_test_expr(token: &Token) -> bool {
     match *token {
-        Token::Pass     => true,
-        Token::Global   => true,
-        Token::Nonlocal => true,
-        _ => valid_flow_stmt(token)
+        Token::Not => true,
+        _ => valid_expr(token)
+    }
+}
+
+pub fn valid_expr(token: &Token) -> bool {
+    match *token {
+        Token::Plus          => true,
+        Token::Minus         => true,
+        Token::BitNot        => true,
+        //Token::Await         => true,
+        Token::Lparen        => true,
+        Token::Lbracket      => true,
+        Token::Lbrace        => true,
+        Token::Identifier(_) => true,
+        Token::DecInteger(_) => true,
+        Token::BinInteger(_) => true,
+        Token::OctInteger(_) => true,
+        Token::HexInteger(_) => true,
+        Token::Float(_)      => true,
+        Token::Imaginary(_)  => true,
+        Token::String(_)     => true,
+        Token::Ellipsis      => true,
+        Token::None          => true,
+        Token::True          => true,
+        Token::False         => true,
+        _ => false
     }
 }

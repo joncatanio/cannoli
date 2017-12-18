@@ -5,9 +5,21 @@ use super::lexer::{Lexer, ResultToken};
 use super::lexer::tokens::Token;
 use self::ast::*;
 
+fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    unimplemented!()
+}
+
 fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
-    unimplemented!()
+    let token = util::get_token(&opt);
+
+    if util::valid_test_expr(&token) {
+        let (opt, test_list) = parse_test_list(opt, stream);
+        (opt, Statement::Return { value: Some(test_list) })
+    } else {
+        (opt, Statement::Return { value: None })
+    }
 }
 
 fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
@@ -19,7 +31,7 @@ fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::Continue => (stream.next(), Statement::Continue),
         Token::Return   => parse_return_stmt(stream.next(), stream),
         Token::Raise    => unimplemented!(),
-        Token::Yield    => unimplemented!(),
+        Token::Yield    => unimplemented!(), // Will return Statement::Expr
         _ => unimplemented!()
     }
 }
@@ -124,10 +136,12 @@ fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     }
 }
 
+/*
 fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
     unimplemented!()
 }
+*/
 
 fn parse_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Statement>) {
@@ -136,8 +150,11 @@ fn parse_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     if util::valid_simple_stmt(&token) {
         parse_simple_stmt(opt, &mut stream)
     } else {
+        /*
         let (opt, stmt) = parse_compound_stmt(opt, &mut stream);
         (opt, vec![stmt])
+        */
+        unimplemented!()
     }
 }
 

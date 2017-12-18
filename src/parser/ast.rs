@@ -12,7 +12,8 @@ pub enum Statement {
     Pass,
     Break,
     Continue,
-    Return { value: Option<Expression> }
+    Return { value: Option<Expression> },
+    Expr { value: Expression },
 }
 
 #[derive(Debug)]
