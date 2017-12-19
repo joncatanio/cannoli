@@ -1,11 +1,11 @@
 // Abstract Syntax Tree definitions
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Ast {
     Module { body: Vec<Statement> }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Statement {
     Global { names: Vec<String> },
     Nonlocal { names: Vec<String> },
@@ -16,13 +16,13 @@ pub enum Statement {
     Expr { value: Expression },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Expression {
     Num(usize),
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ExprContext {
     Load,
     Store,

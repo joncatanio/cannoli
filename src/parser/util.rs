@@ -25,6 +25,7 @@ pub fn valid_flow_stmt(token: &Token) -> bool {
     match *token {
         Token::Break    => true,
         Token::Continue => true,
+        Token::Return   => true,
         _ => false
     }
 }

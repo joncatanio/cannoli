@@ -196,7 +196,7 @@ fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             if util::valid_test_expr(&token) {
                 let (opt, expr) = parse_test_list(opt, stream);
                 let mut elts = match expr {
-                    Expression::Tuple { elts, ctx } => elts,
+                    Expression::Tuple { elts, .. } => elts,
                     _ => vec![expr]
                 };
 

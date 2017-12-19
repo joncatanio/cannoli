@@ -4,3 +4,5 @@ extern crate regex;
 extern crate unicode_names;
 
 pub mod lexer;
+pub mod parser;
+pub mod compiler;
