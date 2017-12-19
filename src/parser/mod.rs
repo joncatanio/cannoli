@@ -5,9 +5,41 @@ use super::lexer::{Lexer, ResultToken};
 use super::lexer::tokens::Token;
 use self::ast::*;
 
+fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    unimplemented!();
+}
+
 fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
-    unimplemented!()
+    let (opt, test_expr) = parse_test_expr(opt, stream);
+    let token = util::get_token(&opt);
+
+    match token {
+        Token::Comma => {
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+
+            if util::valid_test_expr(&token) {
+                let (opt, expr) = parse_test_list(opt, stream);
+                let mut elts = match expr {
+                    Expression::Tuple { elts, ctx } => elts,
+                    _ => vec![expr]
+                };
+
+                elts.insert(0, test_expr);
+                (opt, Expression::Tuple { elts: elts, ctx: ExprContext::Load })
+            } else {
+                (
+                    opt,
+                    Expression::Tuple {
+                        elts: vec![test_expr], ctx: ExprContext::Load
+                    }
+                )
+            }
+        },
+        _ => (stream.next(), test_expr)
+    }
 }
 
 fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)

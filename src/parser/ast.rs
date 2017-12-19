@@ -18,5 +18,16 @@ pub enum Statement {
 
 #[derive(Debug)]
 pub enum Expression {
-    Num(usize)
+    Num(usize),
+    Tuple { elts: Vec<Expression>, ctx: ExprContext },
+}
+
+#[derive(Debug)]
+pub enum ExprContext {
+    Load,
+    Store,
+    Del,
+    AugLoad,
+    AugStore,
+    Param
 }
