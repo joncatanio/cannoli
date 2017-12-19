@@ -254,5 +254,39 @@ fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_and_test(opt, stream);
+    let token = util::get_token(&opt);
+
+    match token {
+        Token::Or => {
+            let (opt, sub_expr) = parse_or_test(stream.next(), stream);
+
+            match sub_expr {
+                Expression::BoolOp { op, mut values } => {
+                    match op {
+                        BoolOperator::Or => {
+                            values.insert(0, expr);
+                            (
+                                opt,
+                                Expression::BoolOp { op: BoolOperator::Or, values: values }
+                            )
+                        },
+                        _ => (opt, Expression::BoolOp { op: BoolOperator::Or, values: vec![expr, Expression::BoolOp { op, values }] })
+                    }
+                },
+                _ => {
+                    (
+                        opt,
+                        Expression::BoolOp { op: BoolOperator::Or, values: vec![expr, sub_expr] }
+                    )
+                }
+            }
+        },
+        _ => (opt, expr)
+    }
+}
+
+fn parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
     unimplemented!()
 }

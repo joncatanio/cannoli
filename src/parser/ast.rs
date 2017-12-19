@@ -18,6 +18,7 @@ pub enum Statement {
 
 #[derive(Debug, PartialEq)]
 pub enum Expression {
+    BoolOp { op: BoolOperator, values: Vec<Expression> },
     If { test: Box<Expression>, body: Box<Expression>,
         orelse: Box<Expression> },
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
@@ -31,4 +32,10 @@ pub enum ExprContext {
     AugLoad,
     AugStore,
     Param
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BoolOperator {
+    And,
+    Or
 }
