@@ -5,7 +5,7 @@ use cannoli::parser;
 use cannoli::parser::ast::*;
 
 #[test]
-fn test_keyword_global() {
+fn keyword_global() {
     let stream = Lexer::new("global var1, var2, var3\n");
     let ast = parser::parse_start_symbol(stream);
 
@@ -21,7 +21,7 @@ fn test_keyword_global() {
 }
 
 #[test]
-fn test_keyword_nonlocal() {
+fn keyword_nonlocal() {
     let stream = Lexer::new("nonlocal var1, var2, var3\n");
     let ast = parser::parse_start_symbol(stream);
 
@@ -37,7 +37,7 @@ fn test_keyword_nonlocal() {
 }
 
 #[test]
-fn test_pass() {
+fn pass() {
     let stream = Lexer::new("pass;pass;pass;pass\n");
     let ast = parser::parse_start_symbol(stream);
 
@@ -54,12 +54,45 @@ fn test_pass() {
 }
 
 #[test]
-fn test_empty_return() {
+fn empty_return() {
     let stream = Lexer::new("return\n");
     let ast = parser::parse_start_symbol(stream);
 
     let expected = Ast::Module {
         body: vec![Statement::Return { value: None }]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn or_and_test_expr() {
+    let stream =
+        Lexer::new("return True or False and False or True and False\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::BoolOp {
+                op: BoolOperator::Or,
+                values: vec![
+                    Expression::NameConstant { value: Singleton::True },
+                    Expression::BoolOp {
+                        op: BoolOperator::And,
+                        values: vec![
+                            Expression::NameConstant { value: Singleton::False },
+                            Expression::NameConstant { value: Singleton::False },
+                        ]
+                    },
+                    Expression::BoolOp {
+                        op: BoolOperator::And,
+                        values: vec![
+                            Expression::NameConstant { value: Singleton::True},
+                            Expression::NameConstant { value: Singleton::False },
+                        ]
+                    }
+                ]
+            })}
+        ]
     };
     assert_eq!(ast, expected);
 }

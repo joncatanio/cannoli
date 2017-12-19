@@ -211,7 +211,7 @@ fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 )
             }
         },
-        _ => (stream.next(), test_expr)
+        _ => (opt, test_expr)
     }
 }
 
@@ -259,34 +259,69 @@ fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
     match token {
         Token::Or => {
-            let (opt, sub_expr) = parse_or_test(stream.next(), stream);
+            let (opt, mut values) = rec_parse_or_test(stream.next(), stream);
 
-            match sub_expr {
-                Expression::BoolOp { op, mut values } => {
-                    match op {
-                        BoolOperator::Or => {
-                            values.insert(0, expr);
-                            (
-                                opt,
-                                Expression::BoolOp { op: BoolOperator::Or, values: values }
-                            )
-                        },
-                        _ => (opt, Expression::BoolOp { op: BoolOperator::Or, values: vec![expr, Expression::BoolOp { op, values }] })
-                    }
-                },
-                _ => {
-                    (
-                        opt,
-                        Expression::BoolOp { op: BoolOperator::Or, values: vec![expr, sub_expr] }
-                    )
-                }
-            }
+            values.insert(0, expr);
+            (opt, Expression::BoolOp { op: BoolOperator::Or, values })
         },
         _ => (opt, expr)
     }
 }
 
+fn rec_parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+    let (opt, expr) = parse_and_test(opt, stream);
+    let token = util::get_token(&opt);
+
+    match token {
+        Token::Or => {
+            let (opt, mut values) = rec_parse_or_test(stream.next(), stream);
+
+            values.insert(0, expr);
+            (opt, values)
+        },
+        _ => (opt, vec![expr])
+    }
+}
+
 fn parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
-    unimplemented!()
+    let (opt, expr) = parse_not_test(opt, stream);
+    let token = util::get_token(&opt);
+
+    match token {
+        Token::And => {
+            let (opt, mut values) = rec_parse_and_test(stream.next(), stream);
+
+            values.insert(0, expr);
+            (opt, Expression::BoolOp { op: BoolOperator::And, values })
+        },
+        _ => (opt, expr)
+    }
+}
+
+fn rec_parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+    let (opt, expr) = parse_not_test(opt, stream);
+    let token = util::get_token(&opt);
+
+    match token {
+        Token::And => {
+            let (opt, mut values) = rec_parse_and_test(stream.next(), stream);
+
+            values.insert(0, expr);
+            (opt, values)
+        },
+        _ => (opt, vec![expr])
+    }
+}
+
+fn parse_not_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let token = util::get_token(&opt);
+    match token {
+        Token::True => (stream.next(), Expression::NameConstant { value: Singleton::True }),
+        Token::False => (stream.next(), Expression::NameConstant { value: Singleton::False }),
+        _ => unimplemented!()
+    }
 }

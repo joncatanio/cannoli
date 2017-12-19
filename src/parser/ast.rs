@@ -21,6 +21,7 @@ pub enum Expression {
     BoolOp { op: BoolOperator, values: Vec<Expression> },
     If { test: Box<Expression>, body: Box<Expression>,
         orelse: Box<Expression> },
+    NameConstant { value: Singleton },
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
 }
 
@@ -38,4 +39,11 @@ pub enum ExprContext {
 pub enum BoolOperator {
     And,
     Or
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Singleton {
+    None,
+    True,
+    False
 }
