@@ -32,7 +32,8 @@ pub fn valid_flow_stmt(token: &Token) -> bool {
 
 pub fn valid_test_expr(token: &Token) -> bool {
     match *token {
-        Token::Not => true,
+        Token::Lambda => true,
+        Token::Not    => true,
         _ => valid_expr(token)
     }
 }

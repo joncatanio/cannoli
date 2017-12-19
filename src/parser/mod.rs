@@ -217,5 +217,42 @@ fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
-    unimplemented!();
+    let token = util::get_token(&opt);
+
+    if token == Token::Lambda {
+        unimplemented!();
+    } else {
+        let (opt, expr) = parse_or_test(opt, stream);
+        let token = util::get_token(&opt);
+
+        match token {
+            Token::If => {
+                let (opt, then_expr) = parse_or_test(stream.next(), stream);
+                let token = util::get_token(&opt);
+
+                match token {
+                    Token::Else => {
+                        let (opt, else_expr) =
+                            parse_test_expr(stream.next(), stream);
+
+                        (
+                            opt,
+                            Expression::If {
+                                test: Box::new(expr),
+                                body: Box::new(then_expr),
+                                orelse: Box::new(else_expr)
+                            }
+                        )
+                    },
+                    _ => panic!("expected 'else', found '{:?}'", token)
+                }
+            },
+            _ => (opt, expr)
+        }
+    }
+}
+
+fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    unimplemented!()
 }

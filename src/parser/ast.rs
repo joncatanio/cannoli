@@ -18,7 +18,8 @@ pub enum Statement {
 
 #[derive(Debug, PartialEq)]
 pub enum Expression {
-    Num(usize),
+    If { test: Box<Expression>, body: Box<Expression>,
+        orelse: Box<Expression> },
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
 }
 
