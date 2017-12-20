@@ -14,32 +14,59 @@ pub fn get_token(opt: &Option<(usize, ResultToken)>) -> Token {
 // Checks for `not in` and `is not` which needs to peek at the next token and
 // will modify the `stream`.
 pub fn get_cmp_op(opt: &Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, CmpOperator) {
+    -> Option<(Option<(usize, ResultToken)>, CmpOperator)> {
     let token = get_token(&opt);
     let opt = stream.next();
     let next_token = get_token(&opt);
 
     match token {
-        Token::EQ => (opt, CmpOperator::EQ),
-        Token::NE => (opt, CmpOperator::NE),
-        Token::LT => (opt, CmpOperator::LT),
-        Token::LE => (opt, CmpOperator::LE),
-        Token::GT => (opt, CmpOperator::GT),
-        Token::GE => (opt, CmpOperator::GE),
+        Token::EQ => Some((opt, CmpOperator::EQ)),
+        Token::NE => Some((opt, CmpOperator::NE)),
+        Token::LT => Some((opt, CmpOperator::LT)),
+        Token::LE => Some((opt, CmpOperator::LE)),
+        Token::GT => Some((opt, CmpOperator::GT)),
+        Token::GE => Some((opt, CmpOperator::GE)),
         Token::Is => {
             match next_token {
-                Token::Not => (stream.next(), CmpOperator::IsNot),
-                _ => (opt, CmpOperator::Is)
+                Token::Not => Some((stream.next(), CmpOperator::IsNot)),
+                _ => Some((opt, CmpOperator::Is))
             }
         },
-        Token::In => (opt, CmpOperator::In),
+        Token::In => Some((opt, CmpOperator::In)),
         Token::Not => {
             match next_token {
-                Token::In => (stream.next(), CmpOperator::NotIn),
+                Token::In => Some((stream.next(), CmpOperator::NotIn)),
                 _ => panic!("expected 'not in', found '{:?}'", next_token)
             }
         }
-        _ => panic!("expected valid comparison operator")
+        _ => None
+    }
+}
+
+pub fn get_shift_op(opt: &Option<(usize, ResultToken)>) -> Option<Operator> {
+    match get_token(&opt) {
+        Token::Lshift => Some(Operator::LShift),
+        Token::Rshift => Some(Operator::RShift),
+        _ => None
+    }
+}
+
+pub fn get_arith_op(opt: &Option<(usize, ResultToken)>) -> Option<Operator> {
+    match get_token(&opt) {
+        Token::Plus  => Some(Operator::Add),
+        Token::Minus => Some(Operator::Sub),
+        _ => None
+    }
+}
+
+pub fn get_term_op(opt: &Option<(usize, ResultToken)>) -> Option<Operator> {
+    match get_token(&opt) {
+        Token::Times       => Some(Operator::Mult),
+        Token::At          => Some(Operator::MatMult),
+        Token::Divide      => Some(Operator::Div),
+        Token::Mod         => Some(Operator::Mod),
+        Token::DivideFloor => Some(Operator::FloorDiv),
+        _ => None
     }
 }
 

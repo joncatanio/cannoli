@@ -20,9 +20,7 @@ fn parse_file_input(opt: Option<(usize, ResultToken)>,
         return (opt, Ast::Module { body: vec![] });
     }
 
-    let token = util::get_token(&opt);
-
-    match token {
+    match util::get_token(&opt) {
         Token::Newline => parse_file_input(stream.next(), &mut stream),
         _ => {
             let (opt, mut stmt_vec) = parse_stmt(opt, &mut stream);
@@ -60,15 +58,13 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Statement>) {
     let (opt, small_stmt) = parse_small_stmt(opt, &mut stream);
-    let token = util::get_token(&opt);
 
     // TODO maybe use a peek here?
-    match token {
+    match util::get_token(&opt) {
         Token::Semi => {
             let opt = stream.next();
-            let token = util::get_token(&opt);
 
-            match token {
+            match util::get_token(&opt) {
                 Token::Newline => (stream.next(), vec![small_stmt]),
                 _ => {
                     let (opt, mut stmts) = parse_simple_stmt(opt, stream);
@@ -89,9 +85,7 @@ fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
 
 fn parse_small_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
-    let token = util::get_token(&opt);
-
-    match token {
+    match util::get_token(&opt) {
         Token::Pass => (stream.next(), Statement::Pass),
         Token::Global => parse_global_stmt(stream.next(), stream),
         Token::Nonlocal => parse_nonlocal_stmt(stream.next(), stream),
@@ -104,14 +98,11 @@ fn parse_small_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_global_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
-    let token = util::get_token(&opt);
-
-    match token {
+    match util::get_token(&opt) {
         Token::Identifier(name) => {
             let opt = stream.next();
-            let token = util::get_token(&opt);
 
-            match token {
+            match util::get_token(&opt) {
                 Token::Comma => {
                     let (opt, stmt) = parse_global_stmt(stream.next(), stream);
                     let mut names = match stmt {
@@ -125,20 +116,17 @@ fn parse_global_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 _ => (opt, Statement::Global { names: vec![name] })
             }
         },
-        _ => panic!("expected 'identifier', found '{:?}'", token)
+        token => panic!("expected 'identifier', found '{:?}'", token)
     }
 }
 
 fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
-    let token = util::get_token(&opt);
-
-    match token {
+    match util::get_token(&opt) {
         Token::Identifier(name) => {
             let opt = stream.next();
-            let token = util::get_token(&opt);
 
-            match token {
+            match util::get_token(&opt) {
                 Token::Comma => {
                     let (opt, stmt) =
                         parse_nonlocal_stmt(stream.next(), stream);
@@ -153,15 +141,13 @@ fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 _ => (opt, Statement::Nonlocal { names: vec![name] })
             }
         }
-        _ => panic!("expected 'identifier', found '{:?}'", token)
+        token => panic!("expected 'identifier', found '{:?}'", token)
     }
 }
 
 fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
-    let token = util::get_token(&opt);
-
-    match token {
+    match util::get_token(&opt) {
         Token::Break    => (stream.next(), Statement::Break),
         Token::Continue => (stream.next(), Statement::Continue),
         Token::Return   => parse_return_stmt(stream.next(), stream),
@@ -186,9 +172,8 @@ fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, test_expr) = parse_test_expr(opt, stream);
-    let token = util::get_token(&opt);
 
-    match token {
+    match util::get_token(&opt) {
         Token::Comma => {
             let opt = stream.next();
             let token = util::get_token(&opt);
@@ -217,37 +202,34 @@ fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
-    let token = util::get_token(&opt);
+    match util::get_token(&opt) {
+        Token::Lambda => unimplemented!(),
+        _ => {
+            let (opt, expr) = parse_or_test(opt, stream);
 
-    if token == Token::Lambda {
-        unimplemented!();
-    } else {
-        let (opt, expr) = parse_or_test(opt, stream);
-        let token = util::get_token(&opt);
+            match util::get_token(&opt) {
+                Token::If => {
+                    let (opt, guard) = parse_or_test(stream.next(), stream);
 
-        match token {
-            Token::If => {
-                let (opt, guard) = parse_or_test(stream.next(), stream);
-                let token = util::get_token(&opt);
+                    match util::get_token(&opt) {
+                        Token::Else => {
+                            let (opt, else_expr) =
+                                parse_test_expr(stream.next(), stream);
 
-                match token {
-                    Token::Else => {
-                        let (opt, else_expr) =
-                            parse_test_expr(stream.next(), stream);
-
-                        (
-                            opt,
-                            Expression::If {
-                                test: Box::new(guard),
-                                body: Box::new(expr),
-                                orelse: Box::new(else_expr)
-                            }
-                        )
-                    },
-                    _ => panic!("expected 'else', found '{:?}'", token)
-                }
-            },
-            _ => (opt, expr)
+                            (
+                                opt,
+                                Expression::If {
+                                    test: Box::new(guard),
+                                    body: Box::new(expr),
+                                    orelse: Box::new(else_expr)
+                                }
+                            )
+                        },
+                        token => panic!("expected 'else', found '{:?}'", token)
+                    }
+                },
+                _ => (opt, expr)
+            }
         }
     }
 }
@@ -255,9 +237,8 @@ fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, expr) = parse_and_test(opt, stream);
-    let token = util::get_token(&opt);
 
-    match token {
+    match util::get_token(&opt) {
         Token::Or => {
             let (opt, mut values) = rec_parse_or_test(stream.next(), stream);
 
@@ -271,9 +252,8 @@ fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn rec_parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Expression>) {
     let (opt, expr) = parse_and_test(opt, stream);
-    let token = util::get_token(&opt);
 
-    match token {
+    match util::get_token(&opt) {
         Token::Or => {
             let (opt, mut values) = rec_parse_or_test(stream.next(), stream);
 
@@ -287,9 +267,8 @@ fn rec_parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, expr) = parse_not_test(opt, stream);
-    let token = util::get_token(&opt);
 
-    match token {
+    match util::get_token(&opt) {
         Token::And => {
             let (opt, mut values) = rec_parse_and_test(stream.next(), stream);
 
@@ -303,9 +282,8 @@ fn parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn rec_parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Expression>) {
     let (opt, expr) = parse_not_test(opt, stream);
-    let token = util::get_token(&opt);
 
-    match token {
+    match util::get_token(&opt) {
         Token::And => {
             let (opt, mut values) = rec_parse_and_test(stream.next(), stream);
 
@@ -318,9 +296,7 @@ fn rec_parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_not_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
-    let token = util::get_token(&opt);
-
-    match token {
+    match util::get_token(&opt) {
         Token::Not => {
             let (opt, expr) = parse_not_test(stream.next(), stream);
 
@@ -348,7 +324,7 @@ fn parse_comparison_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn rec_parse_comparison_expr(opt: Option<(usize, ResultToken)>,
     stream: &mut Lexer) -> (Option<(usize, ResultToken)>,
     Vec<CmpOperator>, Vec<Expression>) {
-    let (opt, op) = util::get_cmp_op(&opt, stream);
+    let (opt, op) = util::get_cmp_op(&opt, stream).unwrap();
     let (opt, expr) = parse_expr(opt, stream);
     let token = util::get_token(&opt);
 
@@ -367,9 +343,8 @@ fn rec_parse_comparison_expr(opt: Option<(usize, ResultToken)>,
 fn parse_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, expr) = parse_xor_expr(opt, stream);
-    let token = util::get_token(&opt);
 
-    match token {
+    match util::get_token(&opt) {
         Token::BitOr => {
             let (opt, right_expr) = parse_expr(stream.next(), stream);
 
@@ -383,9 +358,8 @@ fn parse_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_xor_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, expr) = parse_and_expr(opt, stream);
-    let token = util::get_token(&opt);
 
-    match token {
+    match util::get_token(&opt) {
         Token::BitXor => {
             let (opt, right_expr) = parse_xor_expr(stream.next(), stream);
 
@@ -399,9 +373,8 @@ fn parse_xor_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_and_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, expr) = parse_shift_expr(opt, stream);
-    let token = util::get_token(&opt);
 
-    match token {
+    match util::get_token(&opt) {
         Token::BitAnd => {
             let (opt, right_expr) = parse_and_expr(stream.next(), stream);
 
@@ -415,15 +388,8 @@ fn parse_and_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_shift_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, expr) = parse_arith_expr(opt, stream);
-    let token = util::get_token(&opt);
 
-    let op = match token {
-        Token::Lshift => Some(Operator::LShift),
-        Token::Rshift => Some(Operator::RShift),
-        _ => None
-    };
-
-    match op {
+    match util::get_shift_op(&opt) {
         Some(op) => {
             let (opt, right_expr) = parse_shift_expr(stream.next(), stream);
 
@@ -437,15 +403,23 @@ fn parse_shift_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_arith_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, expr) = parse_term(opt, stream);
-    let token = util::get_token(&opt);
 
-    let op = match token {
-        Token::Plus  => Some(Operator::Add),
-        Token::Minus => Some(Operator::Sub),
-        _ => None
-    };
+    match util::get_arith_op(&opt) {
+        Some(op) => {
+            let (opt, right_expr) = parse_arith_expr(stream.next(), stream);
 
-    match op {
+            (opt, Expression::BinOp { left: Box::new(expr),
+                op, right: Box::new(right_expr) })
+        },
+        None => (opt, expr)
+    }
+}
+
+fn parse_term(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_factor(opt, stream);
+
+    match util::get_term_op(&opt) {
         Some(op) => {
             let (opt, right_expr) = parse_term(stream.next(), stream);
 
@@ -456,7 +430,7 @@ fn parse_arith_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_term(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+fn parse_factor(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     unimplemented!()
 }
