@@ -19,8 +19,11 @@ pub enum Statement {
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     BoolOp { op: BoolOperator, values: Vec<Expression> },
+    UnaryOp { op: UnaryOperator, operand: Box<Expression> },
     If { test: Box<Expression>, body: Box<Expression>,
         orelse: Box<Expression> },
+    Compare { left: Box<Expression>, ops: Vec<CmpOperator>,
+        comparators: Vec<Expression> },
     NameConstant { value: Singleton },
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
 }
@@ -39,6 +42,45 @@ pub enum ExprContext {
 pub enum BoolOperator {
     And,
     Or
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Operator {
+    Add,
+    Sub,
+    Mult,
+    MatMult,
+    Div,
+    Mod,
+    Pow,
+    LShift,
+    RShift,
+    BitOr,
+    BitXor,
+    BitAnd,
+    FloorDiv
+}
+
+#[derive(Debug, PartialEq)]
+pub enum UnaryOperator {
+    Invert,
+    Not,
+    UAdd,
+    USub
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CmpOperator {
+    EQ,
+    NE,
+    LT,
+    LE,
+    GT,
+    GE,
+    Is,
+    IsNot,
+    In,
+    NotIn
 }
 
 #[derive(Debug, PartialEq)]

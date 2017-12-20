@@ -91,7 +91,48 @@ fn or_and_test_expr() {
                         ]
                     }
                 ]
-            })}
+            }) }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn comparison() {
+    let stream = Lexer::new("return True < False > True <= False >= \
+                            True != True in False not in True is False \
+                            is not True\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Compare {
+                left: Box::new(
+                    Expression::NameConstant { value: Singleton::True }
+                ),
+                ops: vec![
+                    CmpOperator::LT,
+                    CmpOperator::GT,
+                    CmpOperator::LE,
+                    CmpOperator::GE,
+                    CmpOperator::NE,
+                    CmpOperator::In,
+                    CmpOperator::NotIn,
+                    CmpOperator::Is,
+                    CmpOperator::IsNot
+                ],
+                comparators: vec![
+                    Expression::NameConstant { value: Singleton::False },
+                    Expression::NameConstant { value: Singleton::True },
+                    Expression::NameConstant { value: Singleton::False },
+                    Expression::NameConstant { value: Singleton::True },
+                    Expression::NameConstant { value: Singleton::True },
+                    Expression::NameConstant { value: Singleton::False },
+                    Expression::NameConstant { value: Singleton::True },
+                    Expression::NameConstant { value: Singleton::False },
+                    Expression::NameConstant { value: Singleton::True },
+                ]
+            }) }
         ]
     };
     assert_eq!(ast, expected);

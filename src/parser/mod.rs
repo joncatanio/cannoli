@@ -319,6 +319,54 @@ fn rec_parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_not_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let token = util::get_token(&opt);
+
+    match token {
+        Token::Not => {
+            let (opt, expr) = parse_not_test(stream.next(), stream);
+
+            (opt, Expression::UnaryOp {
+                op: UnaryOperator::Not, operand: Box::new(expr) })
+        },
+        _ => parse_comparison_expr(opt, stream)
+    }
+}
+
+fn parse_comparison_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_expr(opt, stream);
+    let token = util::get_token(&opt);
+
+    if util::valid_cmp_op(&token) {
+        let (opt, ops, comparators) = rec_parse_comparison_expr(opt, stream);
+
+        (opt, Expression::Compare { left: Box::new(expr), ops, comparators })
+    } else {
+        (opt, expr)
+    }
+}
+
+fn rec_parse_comparison_expr(opt: Option<(usize, ResultToken)>,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>,
+    Vec<CmpOperator>, Vec<Expression>) {
+    let (opt, op) = util::get_cmp_op(&opt, stream);
+    let (opt, expr) = parse_expr(opt, stream);
+    let token = util::get_token(&opt);
+
+    if util::valid_cmp_op(&token) {
+        let (opt, mut ops, mut comparators) =
+            rec_parse_comparison_expr(opt, stream);
+
+        ops.insert(0, op);
+        comparators.insert(0, expr);
+        (opt, ops, comparators)
+    } else {
+        (opt, vec![op], vec![expr])
+    }
+}
+
+fn parse_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let token = util::get_token(&opt);
     match token {
         Token::True => (stream.next(), Expression::NameConstant { value: Singleton::True }),
         Token::False => (stream.next(), Expression::NameConstant { value: Singleton::False }),
