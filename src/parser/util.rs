@@ -70,6 +70,16 @@ pub fn get_term_op(opt: &Option<(usize, ResultToken)>) -> Option<Operator> {
     }
 }
 
+pub fn get_factor_op(opt: &Option<(usize, ResultToken)>)
+    -> Option<UnaryOperator> {
+    match get_token(&opt) {
+        Token::Plus   => Some(UnaryOperator::UAdd),
+        Token::Minus  => Some(UnaryOperator::USub),
+        Token::BitNot => Some(UnaryOperator::Invert),
+        _ => None
+    }
+}
+
 /* Token validation functions to determine if a starting token is found for
  * a given rule. */
 pub fn valid_simple_stmt(token: &Token) -> bool {

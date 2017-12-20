@@ -432,5 +432,17 @@ fn parse_term(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_factor(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
+    match util::get_factor_op(&opt) {
+        Some(op) => {
+            let (opt, operand) = parse_factor(stream.next(), stream);
+
+            (opt, Expression::UnaryOp { op, operand: Box::new(operand) })
+        },
+        None => parse_power(opt, stream)
+    }
+}
+
+fn parse_power(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
     unimplemented!()
 }
