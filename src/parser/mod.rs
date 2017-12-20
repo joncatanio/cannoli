@@ -451,7 +451,7 @@ fn parse_power(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             let (opt, right_expr) = parse_factor(stream.next(), stream);
 
             (opt, Expression::BinOp { left: Box::new(expr),
-                op, right: Box::new(right_expr) })
+                op: Operator::Pow, right: Box::new(right_expr) })
         },
         _ => (opt, expr)
     }
@@ -459,10 +459,63 @@ fn parse_power(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_atom_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
-    unimplemented!()
+    let (opt, expr) = parse_atom(opt, stream);
+    parse_atom_trailer(opt, expr, stream)
 }
 
-fn parse_trailer(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+    match util::get_token(&opt) {
+        Token::Lparen => {
+            unimplemented!()
+        },
+        Token::Lbracket => {
+            unimplemented!()
+        },
+        Token::Dot => {
+            unimplemented!()
+        },
+        _ => (opt, expr)
+    }
+}
+
+fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
-    unimplemented!()
+    match util::get_token(&opt) {
+        Token::Lparen => {
+            unimplemented!()
+        },
+        Token::Lbracket => {
+            unimplemented!()
+        },
+        Token::Lbrace => {
+            unimplemented!()
+        },
+        Token::Identifier(id) =>
+            (stream.next(), Expression::Name { id, ctx: ExprContext::Load }),
+        Token::DecInteger(n) =>
+            (stream.next(), Expression::Num { n: Number::DecInteger(n) }),
+        Token::BinInteger(n) =>
+            (stream.next(), Expression::Num { n: Number::BinInteger(n) }),
+        Token::OctInteger(n) =>
+            (stream.next(), Expression::Num { n: Number::OctInteger(n) }),
+        Token::HexInteger(n) =>
+            (stream.next(), Expression::Num { n: Number::HexInteger(n) }),
+        Token::Float(n) =>
+            (stream.next(), Expression::Num { n: Number::Float(n) }),
+        Token::Imaginary(n) =>
+            (stream.next(), Expression::Num { n: Number::Imaginary(n) }),
+        Token::String(s) => (stream.next(), Expression::Str { s }),
+        Token::Ellipsis => (stream.next(), Expression::Ellipsis),
+        Token::None =>
+            (stream.next(),
+                Expression::NameConstant { value: Singleton::None }),
+        Token::True =>
+            (stream.next(),
+                Expression::NameConstant { value: Singleton::True }),
+        Token::False =>
+            (stream.next(),
+                Expression::NameConstant { value: Singleton::False }),
+        _ => panic!("parsing error")
+    }
 }

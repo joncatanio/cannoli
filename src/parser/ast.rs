@@ -27,7 +27,13 @@ pub enum Expression {
         comparators: Vec<Expression> },
     Call { func: Box<Expression>, args: Vec<Expression>,
         keywords: Vec<Keyword> },
+    Num { n: Number },
+    Str { s: String },
     NameConstant { value: Singleton },
+    Ellipsis,
+    Attribute { value: Box<Expression>, attr: String, ctx: ExprContext },
+    Subscript { value: Box<Expression>, slice: Slice, ctx: ExprContext },
+    Name { id: String, ctx: ExprContext },
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
 }
 
@@ -39,6 +45,14 @@ pub enum ExprContext {
     AugLoad,
     AugStore,
     Param
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Slice {
+    Slice { lower: Option<Box<Expression>>, upper: Option<Box<Expression>>,
+        step: Option<Box<Expression>> },
+    ExtSlice { dims: Vec<Slice> },
+    Index { value: Box<Expression> }
 }
 
 #[derive(Debug, PartialEq)]
@@ -96,4 +110,14 @@ pub enum Singleton {
     None,
     True,
     False
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Number {
+    DecInteger(String),
+    BinInteger(String),
+    OctInteger(String),
+    HexInteger(String),
+    Float(String),
+    Imaginary(String)
 }
