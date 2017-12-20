@@ -227,7 +227,7 @@ fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
         match token {
             Token::If => {
-                let (opt, then_expr) = parse_or_test(stream.next(), stream);
+                let (opt, guard) = parse_or_test(stream.next(), stream);
                 let token = util::get_token(&opt);
 
                 match token {
@@ -238,8 +238,8 @@ fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                         (
                             opt,
                             Expression::If {
-                                test: Box::new(expr),
-                                body: Box::new(then_expr),
+                                test: Box::new(guard),
+                                body: Box::new(expr),
                                 orelse: Box::new(else_expr)
                             }
                         )
