@@ -366,10 +366,21 @@ fn rec_parse_comparison_expr(opt: Option<(usize, ResultToken)>,
 
 fn parse_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_xor_expr(opt, stream);
     let token = util::get_token(&opt);
+
     match token {
-        Token::True => (stream.next(), Expression::NameConstant { value: Singleton::True }),
-        Token::False => (stream.next(), Expression::NameConstant { value: Singleton::False }),
-        _ => unimplemented!()
+        Token::BitOr => {
+            let (opt, right_expr) = parse_expr(stream.next(), stream);
+
+            (opt, Expression::BinOp { left: Box::new(expr),
+                op: Operator::BitOr, right: Box::new(right_expr)})
+        },
+        _ => (opt, expr)
     }
+}
+
+fn parse_xor_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    unimplemented!()
 }

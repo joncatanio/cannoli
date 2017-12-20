@@ -19,6 +19,7 @@ pub enum Statement {
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     BoolOp { op: BoolOperator, values: Vec<Expression> },
+    BinOp { left: Box<Expression>, op: Operator, right: Box<Expression> },
     UnaryOp { op: UnaryOperator, operand: Box<Expression> },
     If { test: Box<Expression>, body: Box<Expression>,
         orelse: Box<Expression> },
