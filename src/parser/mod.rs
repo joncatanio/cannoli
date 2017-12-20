@@ -444,5 +444,25 @@ fn parse_factor(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_power(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_atom_expr(opt, stream);
+
+    match util::get_token(&opt) {
+        Token::Exponent => {
+            let (opt, right_expr) = parse_factor(stream.next(), stream);
+
+            (opt, Expression::BinOp { left: Box::new(expr),
+                op, right: Box::new(right_expr) })
+        },
+        _ => (opt, expr)
+    }
+}
+
+fn parse_atom_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    unimplemented!()
+}
+
+fn parse_trailer(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
     unimplemented!()
 }

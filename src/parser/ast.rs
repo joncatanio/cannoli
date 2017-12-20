@@ -25,6 +25,8 @@ pub enum Expression {
         orelse: Box<Expression> },
     Compare { left: Box<Expression>, ops: Vec<CmpOperator>,
         comparators: Vec<Expression> },
+    Call { func: Box<Expression>, args: Vec<Expression>,
+        keywords: Vec<Keyword> },
     NameConstant { value: Singleton },
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
 }
@@ -82,6 +84,11 @@ pub enum CmpOperator {
     IsNot,
     In,
     NotIn
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Keyword {
+    Keyword { arg: Option<String>, value: Expression }
 }
 
 #[derive(Debug, PartialEq)]
