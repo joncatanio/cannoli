@@ -374,13 +374,29 @@ fn parse_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             let (opt, right_expr) = parse_expr(stream.next(), stream);
 
             (opt, Expression::BinOp { left: Box::new(expr),
-                op: Operator::BitOr, right: Box::new(right_expr)})
+                op: Operator::BitOr, right: Box::new(right_expr) })
         },
         _ => (opt, expr)
     }
 }
 
 fn parse_xor_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_and_expr(opt, stream);
+    let token = util::get_token(&opt);
+
+    match token {
+        Token::BitXor => {
+            let (opt, right_expr) = parse_xor_expr(stream.next(), stream);
+
+            (opt, Expression::BinOp { left: Box::new(expr),
+                op: Operator::BitXor, right: Box::new(right_expr) })
+        },
+        _ => (opt, expr)
+    }
+}
+
+fn parse_and_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     unimplemented!()
 }
