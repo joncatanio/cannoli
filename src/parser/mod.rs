@@ -436,5 +436,27 @@ fn parse_shift_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_arith_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_term(opt, stream);
+    let token = util::get_token(&opt);
+
+    let op = match token {
+        Token::Plus  => Some(Operator::Add),
+        Token::Minus => Some(Operator::Sub),
+        _ => None
+    };
+
+    match op {
+        Some(op) => {
+            let (opt, right_expr) = parse_term(stream.next(), stream);
+
+            (opt, Expression::BinOp { left: Box::new(expr),
+                op, right: Box::new(right_expr) })
+        },
+        None => (opt, expr)
+    }
+}
+
+fn parse_term(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
     unimplemented!()
 }
