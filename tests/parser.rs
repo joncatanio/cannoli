@@ -137,3 +137,70 @@ fn comparison() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn return_call_expr() {
+    let stream = Lexer::new("return func(1, \"test\", True, *d, **e,)\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Call {
+                func: Box::new(Expression::Name {
+                    id: String::from("func"),
+                    ctx: ExprContext::Load
+                }),
+                args: vec![
+                    Expression::Num {n: Number::DecInteger(String::from("1"))},
+                    Expression::Str {s: String::from("test")},
+                    Expression::NameConstant {value: Singleton::True},
+                    Expression::Starred {
+                        value: Box::new(Expression::Name {
+                            id: String::from("d"),
+                            ctx: ExprContext::Load
+                        }),
+                        ctx: ExprContext::Load
+                    }
+                ],
+                keywords: vec![
+                    Keyword::Keyword {
+                        arg: None,
+                        value: Expression::Name {
+                            id: String::from("e"),
+                            ctx: ExprContext::Load
+                        }
+                    }
+                ]
+            })}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn return_nested_call() {
+    let stream = Lexer::new("return f()()()\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Call {
+                func: Box::new(Expression::Call {
+                    func: Box::new(Expression::Call {
+                        func: Box::new(Expression::Name {
+                            id: String::from("f"),
+                            ctx: ExprContext::Load
+                        }),
+                        args: vec![],
+                        keywords: vec![]
+                    }),
+                    args: vec![],
+                    keywords: vec![]
+                }),
+                args: vec![],
+                keywords: vec![]
+            })}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
