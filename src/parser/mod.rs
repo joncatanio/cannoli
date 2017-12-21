@@ -4,6 +4,7 @@ mod util;
 use super::lexer::{Lexer, ResultToken};
 use super::lexer::tokens::Token;
 use self::ast::*;
+use self::util::ArgType;
 
 pub fn parse_start_symbol(mut stream: Lexer) -> Ast {
     let (next_token, ast) = parse_file_input(stream.next(), &mut stream);
@@ -467,7 +468,14 @@ fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
     stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
     match util::get_token(&opt) {
         Token::Lparen => {
-            unimplemented!()
+            let (opt, args, keywords) = parse_arglist(stream.next(), stream);
+
+            match util::get_token(&opt) {
+                Token::Rparen => parse_atom_trailer(stream.next(),
+                    Expression::Call { func: Box::new(expr), args, keywords },
+                    stream),
+                token => panic!("expected ')', found '{:?}'", token)
+            }
         },
         Token::Lbracket => {
             unimplemented!()
@@ -518,4 +526,47 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 Expression::NameConstant { value: Singleton::False }),
         _ => panic!("parsing error")
     }
+}
+
+fn parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Expression>, Vec<Keyword>) {
+    let token = util::get_token(&opt);
+
+    if util::valid_argument(&token) {
+        rec_parse_arglist(opt, stream)
+    } else {
+        (opt, vec![], vec![])
+    }
+}
+
+fn rec_parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Expression>, Vec<Keyword>) {
+    let (opt, expr, arg, arg_type) = parse_argument(opt, stream);
+
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let (opt, mut args, mut keywords) =
+                rec_parse_arglist(stream.next(), stream);
+
+            match arg_type {
+                ArgType::Positional => args.insert(0, expr),
+                ArgType::Keyword => keywords.insert(0,
+                    Keyword::Keyword { arg, value: expr })
+            }
+
+            (opt, args, keywords)
+        },
+        _ => {
+            match arg_type {
+                ArgType::Positional => (opt, vec![expr], vec![]),
+                ArgType::Keyword => (opt, vec![],
+                    vec![Keyword::Keyword { arg, value: expr }])
+            }
+        }
+    }
+}
+
+fn parse_argument(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression, Option<String>, ArgType) {
+    unimplemented!()
 }

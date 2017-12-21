@@ -740,7 +740,7 @@ fn process_byte_escape_sequence(escaped: &str)
    match escaped
    {
       "\n" | "\r" | "\r\n" => vec![],
-      "\\" => vec!['\\' as u8], 
+      "\\" => vec!['\\' as u8],
       "'" => vec!['\'' as u8],
       "\"" => vec!['"' as u8],
       "a" => vec!['\x07' as u8],
@@ -770,7 +770,7 @@ fn process_byte_escape_sequence(escaped: &str)
    }
 }
 
-// Temporary replacement for unstable 
+// Temporary replacement for unstable
 fn push_all(dest: &mut Vec<u8>, src: &[u8])
 {
    for &v in src
@@ -989,7 +989,7 @@ mod tests
       assert_eq!(l.next(), Some((9, Ok(Token::Newline))));
       assert_eq!(l.next(), Some((10, Ok(Token::Dedent))));
       assert_eq!(l.next(), Some((10, Ok(Token::Identifier("after_comment".to_owned())))));
-   }   
+   }
 
    #[test]
    fn test_numbers()
@@ -1034,7 +1034,7 @@ mod tests
       assert_eq!(l.next(), Some((1, Ok(Token::Float("3.".to_owned())))));
       assert_eq!(l.next(), Some((1, Ok(Token::Float(".2".to_owned())))));
       assert_eq!(l.next(), Some((1, Ok(Token::Newline))));
-   }   
+   }
 
    #[test]
    fn test_dedent()
@@ -1056,7 +1056,7 @@ mod tests
       assert_eq!(l.next(), Some((7, Err(LexerError::Dedent))));
       assert_eq!(l.next(), Some((7, Ok(Token::Identifier("n2".to_owned())))));
       assert_eq!(l.next(), Some((7, Ok(Token::Newline))));
-   }   
+   }
 
    #[test]
    fn test_symbols()

@@ -147,3 +147,18 @@ pub fn valid_cmp_op(token: &Token) -> bool {
         _ => false
     }
 }
+
+pub fn valid_argument(token: &Token) -> bool {
+    match *token {
+        Token::Times => true,
+        Token::Exponent => true,
+        _ => valid_test_expr(token)
+    }
+}
+
+/* Utility Types */
+#[derive(Debug, PartialEq)]
+pub enum ArgType {
+    Positional,
+    Keyword
+}

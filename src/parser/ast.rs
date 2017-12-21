@@ -33,6 +33,7 @@ pub enum Expression {
     Ellipsis,
     Attribute { value: Box<Expression>, attr: String, ctx: ExprContext },
     Subscript { value: Box<Expression>, slice: Slice, ctx: ExprContext },
+    Starred { value: Box<Expression>, ctx: ExprContext },
     Name { id: String, ctx: ExprContext },
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
 }
