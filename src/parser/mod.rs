@@ -524,7 +524,7 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::False =>
             (stream.next(),
                 Expression::NameConstant { value: Singleton::False }),
-        _ => panic!("parsing error")
+        token => panic!("parsing error, found '{:?}'", token)
     }
 }
 
@@ -545,16 +545,34 @@ fn rec_parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
     match util::get_token(&opt) {
         Token::Comma => {
-            let (opt, mut args, mut keywords) =
-                rec_parse_arglist(stream.next(), stream);
+            let opt = stream.next();
+            let token = util::get_token(&opt);
 
-            match arg_type {
-                ArgType::Positional => args.insert(0, expr),
-                ArgType::Keyword => keywords.insert(0,
-                    Keyword::Keyword { arg, value: expr })
+            if util::valid_argument(&token) {
+                let (opt, mut args, mut keywords) =
+                    rec_parse_arglist(opt, stream);
+
+                match arg_type {
+                    ArgType::Positional => {
+                        if keywords.is_empty() {
+                            panic!("positional argument follows keyword \
+                                    argument unpacking")
+                        }
+                        args.insert(0, expr)
+                    },
+                    ArgType::Keyword => keywords.insert(0,
+                        Keyword::Keyword { arg, value: expr })
+                }
+
+                (opt, args, keywords)
+            } else {
+                // Trailing comma case
+                match arg_type {
+                    ArgType::Positional => (opt, vec![expr], vec![]),
+                    ArgType::Keyword => (opt, vec![],
+                        vec![Keyword::Keyword { arg, value: expr }])
+                }
             }
-
-            (opt, args, keywords)
         },
         _ => {
             match arg_type {
@@ -568,5 +586,38 @@ fn rec_parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_argument(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression, Option<String>, ArgType) {
-    unimplemented!()
+    match util::get_token(&opt) {
+        Token::Exponent => {
+            let (opt, expr) = parse_test_expr(stream.next(), stream);
+
+            (opt, expr, None, ArgType::Keyword)
+        },
+        Token::Times => {
+            let (opt, expr) = parse_test_expr(stream.next(), stream);
+
+            (opt, Expression::Starred { value: Box::new(expr),
+                ctx: ExprContext::Load }, None, ArgType::Positional)
+        },
+        _ => {
+            let (opt, expr) = parse_test_expr(opt, stream);
+
+            match util::get_token(&opt) {
+                Token::Assign => {
+                    let (opt, value) = parse_test_expr(stream.next(), stream);
+                    let arg = match expr {
+                        Expression::Name { id, .. } => id,
+                        _ => panic!("keyword can't be expression")
+                    };
+
+                    (opt, value, Some(arg), ArgType::Keyword)
+                },
+                Token::For => {
+                    // The Async token could come before For if we support it,
+                    // in that case we may want to add a pattern to match
+                    unimplemented!()
+                },
+                _ => (opt, expr, None, ArgType::Positional)
+            }
+        }
+    }
 }
