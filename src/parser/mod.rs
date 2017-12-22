@@ -170,6 +170,35 @@ fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
+// Returns a Vec since there are multiple Expression values that wrap the
+// expression list. If a Vec of size one is returned, the contained
+// Expression should be pulled out.
+fn parse_expr_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+    let (opt, expr) = match util::get_token(&opt) {
+        Token::Times => parse_star_expr(stream.next(), stream),
+        _ => parse_expr(opt, stream)
+    };
+
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+
+            if util::valid_expr_list(&token) {
+                let (opt, mut exprs) = parse_expr_list(opt, stream);
+
+                exprs.insert(0, expr);
+                (opt, exprs)
+            } else {
+                // Trailing comma case
+                (opt, vec![expr])
+            }
+        },
+        _ => (opt, vec![expr])
+    }
+}
+
 fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, test_expr) = parse_test_expr(opt, stream);
@@ -339,6 +368,14 @@ fn rec_parse_comparison_expr(opt: Option<(usize, ResultToken)>,
     } else {
         (opt, vec![op], vec![expr])
     }
+}
+
+// Basically a wrapper for `parse_expr` that returns Expression::Starred,
+// the check for an asterisk should be done prior to calling this function
+fn parse_star_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_expr(opt, stream);
+    (opt, Expression::Starred { value: Box::new(expr), ctx: ExprContext::Load })
 }
 
 fn parse_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
@@ -614,6 +651,7 @@ fn parse_argument(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 Token::For => {
                     // The Async token could come before For if we support it,
                     // in that case we may want to add a pattern to match
+                    let (opt, expr) = parse_expr_list(stream.next(), stream);
                     unimplemented!()
                 },
                 _ => (opt, expr, None, ArgType::Positional)

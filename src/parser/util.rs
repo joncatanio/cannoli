@@ -108,6 +108,13 @@ pub fn valid_test_expr(token: &Token) -> bool {
     }
 }
 
+pub fn valid_expr_list(token: &Token) -> bool {
+    match *token {
+        Token::Times => true,
+        _ => valid_expr(token)
+    }
+}
+
 pub fn valid_expr(token: &Token) -> bool {
     match *token {
         Token::Plus          => true,
