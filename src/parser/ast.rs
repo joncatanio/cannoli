@@ -33,7 +33,7 @@ pub enum Expression {
     NameConstant { value: Singleton },
     Ellipsis,
     Attribute { value: Box<Expression>, attr: String, ctx: ExprContext },
-    Subscript { value: Box<Expression>, slice: Slice, ctx: ExprContext },
+    Subscript { value: Box<Expression>, slice: Box<Slice>, ctx: ExprContext },
     Starred { value: Box<Expression>, ctx: ExprContext },
     Name { id: String, ctx: ExprContext },
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
@@ -51,10 +51,10 @@ pub enum ExprContext {
 
 #[derive(Debug, PartialEq)]
 pub enum Slice {
-    Slice { lower: Option<Box<Expression>>, upper: Option<Box<Expression>>,
-        step: Option<Box<Expression>> },
+    Slice { lower: Option<Expression>, upper: Option<Expression>,
+        step: Option<Expression> },
     ExtSlice { dims: Vec<Slice> },
-    Index { value: Box<Expression> }
+    Index { value: Expression }
 }
 
 #[derive(Debug, PartialEq)]

@@ -460,10 +460,28 @@ fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
             }
         },
         Token::Lbracket => {
-            unimplemented!()
+            let (opt, slice) = parse_subscript_list(stream.next(), stream);
+
+            match util::get_token_expect(&opt, Token::Rbracket) {
+                Token::Rbracket => parse_atom_trailer(stream.next(),
+                    Expression::Subscript {
+                        value: Box::new(expr), slice: Box::new(slice),
+                        ctx: ExprContext::Load
+                    },
+                    stream),
+                token => panic!("expected ']', found '{:?}'", token)
+            }
         },
         Token::Dot => {
-            unimplemented!()
+            match util::get_token(&stream.next()) {
+                Token::Identifier(attr) => parse_atom_trailer(stream.next(),
+                    Expression::Attribute {
+                        value: Box::new(expr), attr, ctx: ExprContext::Load
+                    },
+                    stream
+                ),
+                token => panic!("expected identifier, found '{:?}'", token)
+            }
         },
         _ => (opt, expr)
     }
@@ -508,6 +526,54 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 Expression::NameConstant { value: Singleton::False }),
         token => panic!("parsing error, found '{:?}'", token)
     }
+}
+
+fn parse_subscript_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Slice) {
+    let (opt, sub) = parse_subscript(opt, stream);
+
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+
+            if util::valid_subscript(&token) {
+                let(opt, slice) = parse_subscript_list(opt, stream);
+
+                match slice {
+                    Slice::Slice { .. } => {
+                        (opt, Slice::ExtSlice { dims: vec![sub, slice] })
+                    },
+                    Slice::ExtSlice { mut dims } => {
+                        dims.insert(0, sub);
+                        (opt, Slice::ExtSlice { dims })
+                    },
+                    Slice::Index { value } => {
+                        unimplemented!()
+                    }
+                }
+            } else {
+                // Trailing comma case
+                match sub {
+                    Slice::Slice { .. } =>
+                        (opt, Slice::ExtSlice { dims: vec![sub] }),
+                    Slice::Index { value } => {
+                        (opt, Slice::Index { value: Expression::Tuple {
+                            elts: vec![value], ctx: ExprContext::Load } })
+                    },
+                    _ => (opt, sub)
+                }
+            }
+        },
+        _ => (opt, sub)
+    }
+}
+
+fn parse_subscript(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Slice) {
+    let (opt, expr) = parse_test_expr(opt, stream);
+
+    (opt, Slice::Index { value: expr })
 }
 
 // Returns a Vec since there are multiple Expression values that wrap the
@@ -672,7 +738,7 @@ fn parse_comp_iter(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
     match util::get_token(&opt) {
         Token::For => parse_comp_for(stream.next(), gen_expr, stream),
         Token::If  => parse_comp_if(stream.next(), gen_expr, stream),
-        token => (opt, gen_expr)
+        _ => (opt, gen_expr)
     }
 }
 

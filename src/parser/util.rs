@@ -5,7 +5,17 @@ use super::ast::*;
 /* Helper functions */
 pub fn get_token(opt: &Option<(usize, ResultToken)>) -> Token {
     if opt.is_none() {
-        panic!("token value of None detected");
+        panic!("expected <Token>, found 'None'");
+    }
+    let (_, result_token) = opt.clone().unwrap();
+    result_token.clone().unwrap()
+}
+
+// Returns an error message listing the token that was expected.
+pub fn get_token_expect(opt: &Option<(usize, ResultToken)>, token: Token)
+    -> Token {
+    if opt.is_none() {
+        panic!("expected '{:?}', found 'None'", token)
     }
     let (_, result_token) = opt.clone().unwrap();
     result_token.clone().unwrap()
@@ -159,6 +169,13 @@ pub fn valid_argument(token: &Token) -> bool {
     match *token {
         Token::Times    => true,
         Token::Exponent => true,
+        _ => valid_test_expr(token)
+    }
+}
+
+pub fn valid_subscript(token: &Token) -> bool {
+    match *token {
+        Token::Semi => true,
         _ => valid_test_expr(token)
     }
 }
