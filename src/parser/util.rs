@@ -142,13 +142,13 @@ pub fn valid_expr(token: &Token) -> bool {
 
 pub fn valid_cmp_op(token: &Token) -> bool {
     match *token {
-        Token::LT => true,
-        Token::GT => true,
-        Token::EQ => true,
-        Token::GE => true,
-        Token::LE => true,
-        Token::NE => true,
-        Token::In => true,
+        Token::LT  => true,
+        Token::GT  => true,
+        Token::EQ  => true,
+        Token::GE  => true,
+        Token::LE  => true,
+        Token::NE  => true,
+        Token::In  => true,
         Token::Not => true, // `not in`
         Token::Is  => true, // `is` and `is not`
         _ => false
@@ -157,7 +157,7 @@ pub fn valid_cmp_op(token: &Token) -> bool {
 
 pub fn valid_argument(token: &Token) -> bool {
     match *token {
-        Token::Times => true,
+        Token::Times    => true,
         Token::Exponent => true,
         _ => valid_test_expr(token)
     }

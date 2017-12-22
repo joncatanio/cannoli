@@ -23,6 +23,7 @@ pub enum Expression {
     UnaryOp { op: UnaryOperator, operand: Box<Expression> },
     If { test: Box<Expression>, body: Box<Expression>,
         orelse: Box<Expression> },
+    Generator { elt: Box<Expression>, generators: Vec<Comprehension> },
     Compare { left: Box<Expression>, ops: Vec<CmpOperator>,
         comparators: Vec<Expression> },
     Call { func: Box<Expression>, args: Vec<Expression>,
@@ -99,6 +100,13 @@ pub enum CmpOperator {
     IsNot,
     In,
     NotIn
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Comprehension {
+    // No { ..., int: is_async } in Comprehension definition
+    Comprehension { target: Expression, iter: Expression,
+        ifs: Vec<Expression> }
 }
 
 #[derive(Debug, PartialEq)]

@@ -170,66 +170,6 @@ fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-// Returns a Vec since there are multiple Expression values that wrap the
-// expression list. If a Vec of size one is returned, the contained
-// Expression should be pulled out.
-fn parse_expr_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
-    let (opt, expr) = match util::get_token(&opt) {
-        Token::Times => parse_star_expr(stream.next(), stream),
-        _ => parse_expr(opt, stream)
-    };
-
-    match util::get_token(&opt) {
-        Token::Comma => {
-            let opt = stream.next();
-            let token = util::get_token(&opt);
-
-            if util::valid_expr_list(&token) {
-                let (opt, mut exprs) = parse_expr_list(opt, stream);
-
-                exprs.insert(0, expr);
-                (opt, exprs)
-            } else {
-                // Trailing comma case
-                (opt, vec![expr])
-            }
-        },
-        _ => (opt, vec![expr])
-    }
-}
-
-fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
-    let (opt, test_expr) = parse_test_expr(opt, stream);
-
-    match util::get_token(&opt) {
-        Token::Comma => {
-            let opt = stream.next();
-            let token = util::get_token(&opt);
-
-            if util::valid_test_expr(&token) {
-                let (opt, expr) = parse_test_list(opt, stream);
-                let mut elts = match expr {
-                    Expression::Tuple { elts, .. } => elts,
-                    _ => vec![expr]
-                };
-
-                elts.insert(0, test_expr);
-                (opt, Expression::Tuple { elts: elts, ctx: ExprContext::Load })
-            } else {
-                (
-                    opt,
-                    Expression::Tuple {
-                        elts: vec![test_expr], ctx: ExprContext::Load
-                    }
-                )
-            }
-        },
-        _ => (opt, test_expr)
-    }
-}
-
 fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     match util::get_token(&opt) {
@@ -262,6 +202,11 @@ fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             }
         }
     }
+}
+
+fn parse_test_nocond(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    unimplemented!()
 }
 
 fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
@@ -565,6 +510,66 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
+// Returns a Vec since there are multiple Expression values that wrap the
+// expression list. If a Vec of size one is returned, the contained
+// Expression should be pulled out.
+fn parse_expr_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+    let (opt, expr) = match util::get_token(&opt) {
+        Token::Times => parse_star_expr(stream.next(), stream),
+        _ => parse_expr(opt, stream)
+    };
+
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+
+            if util::valid_expr_list(&token) {
+                let (opt, mut exprs) = parse_expr_list(opt, stream);
+
+                exprs.insert(0, expr);
+                (opt, exprs)
+            } else {
+                // Trailing comma case
+                (opt, vec![expr])
+            }
+        },
+        _ => (opt, vec![expr])
+    }
+}
+
+fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, test_expr) = parse_test_expr(opt, stream);
+
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+
+            if util::valid_test_expr(&token) {
+                let (opt, expr) = parse_test_list(opt, stream);
+                let mut elts = match expr {
+                    Expression::Tuple { elts, .. } => elts,
+                    _ => vec![expr]
+                };
+
+                elts.insert(0, test_expr);
+                (opt, Expression::Tuple { elts: elts, ctx: ExprContext::Load })
+            } else {
+                (
+                    opt,
+                    Expression::Tuple {
+                        elts: vec![test_expr], ctx: ExprContext::Load
+                    }
+                )
+            }
+        },
+        _ => (opt, test_expr)
+    }
+}
+
 fn parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Expression>, Vec<Keyword>) {
     let token = util::get_token(&opt);
@@ -651,11 +656,71 @@ fn parse_argument(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 Token::For => {
                     // The Async token could come before For if we support it,
                     // in that case we may want to add a pattern to match
-                    let (opt, expr) = parse_expr_list(stream.next(), stream);
-                    unimplemented!()
+                    let (opt, expr) = parse_comp_for(stream.next(),
+                        Expression::Generator { elt: Box::new(expr),
+                        generators: vec![] }, stream);
+                    (opt, expr, None, ArgType::Positional)
                 },
                 _ => (opt, expr, None, ArgType::Positional)
             }
         }
     }
+}
+
+fn parse_comp_iter(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+    match util::get_token(&opt) {
+        Token::For => parse_comp_for(stream.next(), gen_expr, stream),
+        Token::If  => parse_comp_if(stream.next(), gen_expr, stream),
+        token => (opt, gen_expr)
+    }
+}
+
+// Returns updated Generator, it's up to the caller to supply this method with
+// a Expression::Generator that will be "filled"
+fn parse_comp_for(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, mut expr_list) = parse_expr_list(opt, stream);
+    let token = util::get_token(&opt);
+
+    if token != Token::In {
+        panic!("expected 'in' keyword, found '{:?}'", token);
+    }
+    let (opt, iter) = parse_or_test(stream.next(), stream);
+
+    // Comprehensions deal with Tuples so if the size of the list is greater
+    // than one element we make it a tuple. The `del` keyword expects an
+    // exprlist in the grammar but doesn't expect a Tuple, therefore we let the
+    // caller manage the Expression type.
+    let target = if expr_list.len() == 1 {
+        expr_list.pop().unwrap()
+    } else {
+        Expression::Tuple { elts: expr_list, ctx: ExprContext::Load }
+    };
+    let (elt, mut generators) = match gen_expr {
+        Expression::Generator { elt, generators } => (elt, generators),
+        _ => panic!("expected Expression::Generator, found {:?}", gen_expr)
+    };
+    let comp = Comprehension::Comprehension { target, iter, ifs: vec![] };
+
+    generators.push(comp);
+    parse_comp_iter(opt, Expression::Generator { elt, generators }, stream)
+}
+
+// Modifies the most recent Comprehension within the generators
+fn parse_comp_if(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_test_nocond(opt, stream);
+    let (elt, mut generators) = match gen_expr {
+        Expression::Generator { elt, generators } => (elt, generators),
+        _ => panic!("expected Expression::Generator, found {:?}", gen_expr)
+    };
+    let (target, iter, mut ifs) = match generators.pop().unwrap() {
+        Comprehension::Comprehension { target, iter, ifs } =>
+            (target, iter, ifs)
+    };
+
+    ifs.push(expr);
+    generators.push(Comprehension::Comprehension { target, iter, ifs });
+    parse_comp_iter(opt, Expression::Generator { elt, generators }, stream)
 }
