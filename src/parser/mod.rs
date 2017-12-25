@@ -571,9 +571,48 @@ fn parse_subscript_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_subscript(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Slice) {
-    let (opt, expr) = parse_test_expr(opt, stream);
+    let token = util::get_token(&opt);
+    let (opt, lower) = if util::valid_test_expr(&token) {
+        let (opt, expr) = parse_test_expr(opt, stream);
+        (opt, Some(expr))
+    } else {
+        (opt, None)
+    };
 
-    (opt, Slice::Index { value: expr })
+    match util::get_token(&opt) {
+        Token::Colon => {
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+            let (opt, upper) = if util::valid_test_expr(&token) {
+                let (opt, expr) = parse_test_expr(opt, stream);
+                (opt, Some(expr))
+            } else {
+                (opt, None)
+            };
+            let (opt, step) = parse_sliceop(opt, stream);
+
+            (opt, Slice::Slice { lower, upper, step })
+        },
+        _ => (opt, Slice::Index { value: lower.unwrap() })
+    }
+}
+
+fn parse_sliceop(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Option<Expression>) {
+    match util::get_token(&opt) {
+        Token::Colon => {
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+
+            if util::valid_test_expr(&token) {
+                let (opt, expr) = parse_test_expr(opt, stream);
+                (opt, Some(expr))
+            } else {
+                (opt, None)
+            }
+        },
+        _ => (opt, None)
+    }
 }
 
 // Returns a Vec since there are multiple Expression values that wrap the
