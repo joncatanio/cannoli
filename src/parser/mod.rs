@@ -530,42 +530,54 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_subscript_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Slice) {
-    let (opt, sub) = parse_subscript(opt, stream);
+    let (opt, slice) = parse_subscript(opt, stream);
+    let (opt, mut slices) = match util::get_token(&opt) {
+        Token::Comma => rec_parse_subscript_list(opt, stream),
+        _ => (opt, vec![])
+    };
 
-    match util::get_token(&opt) {
-        Token::Comma => {
-            let opt = stream.next();
-            let token = util::get_token(&opt);
-
-            if util::valid_subscript(&token) {
-                let(opt, slice) = parse_subscript_list(opt, stream);
+    if slices.is_empty() {
+        match util::get_token(&opt) {
+            Token::Comma => {
+                let opt = stream.next();
 
                 match slice {
                     Slice::Slice { .. } => {
-                        (opt, Slice::ExtSlice { dims: vec![sub, slice] })
+                        (opt, Slice::ExtSlice { dims: vec![slice] })
                     },
-                    Slice::ExtSlice { mut dims } => {
-                        dims.insert(0, sub);
-                        (opt, Slice::ExtSlice { dims })
-                    },
-                    Slice::Index { value } => {
-                        unimplemented!()
-                    }
-                }
-            } else {
-                // Trailing comma case
-                match sub {
-                    Slice::Slice { .. } =>
-                        (opt, Slice::ExtSlice { dims: vec![sub] }),
                     Slice::Index { value } => {
                         (opt, Slice::Index { value: Expression::Tuple {
                             elts: vec![value], ctx: ExprContext::Load } })
                     },
-                    _ => (opt, sub)
+                    _ => panic!("parsing error: `parse_subscript_list`")
                 }
-            }
-        },
-        _ => (opt, sub)
+            },
+            _ => (opt, slice)
+        }
+    } else {
+        // Check to see if every slice is an Index, if so create a tuple,
+        // otherwise make an ExtSlice.
+        unimplemented!()
+    }
+}
+
+fn rec_parse_subscript_list(opt: Option<(usize, ResultToken)>,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Vec<Slice>) {
+    if util::valid_subscript(&util::get_token(&opt)) {
+        let (opt, slice) = parse_subscript(opt, stream);
+
+        match util::get_token(&opt) {
+            Token::Comma => {
+                let (opt, mut slices) =
+                    rec_parse_subscript_list(stream.next(), stream);
+
+                slices.insert(0, slice);
+                (opt, slices)
+            },
+            _ => (opt, vec![slice])
+        }
+    } else {
+        (opt, vec![])
     }
 }
 
