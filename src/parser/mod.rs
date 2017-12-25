@@ -531,33 +531,55 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_subscript_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Slice) {
     let (opt, slice) = parse_subscript(opt, stream);
-    let (opt, mut slices) = match util::get_token(&opt) {
-        Token::Comma => rec_parse_subscript_list(opt, stream),
-        _ => (opt, vec![])
+    // We need to keep track of a trailing comma and only one subscript.
+    let trailing_comma = match util::get_token(&opt) {
+        Token::Comma => true,
+        _ => false
     };
+    let (opt, mut slices) = rec_parse_subscript_list(stream.next(), stream);
 
     if slices.is_empty() {
-        match util::get_token(&opt) {
-            Token::Comma => {
-                let opt = stream.next();
-
-                match slice {
-                    Slice::Slice { .. } => {
-                        (opt, Slice::ExtSlice { dims: vec![slice] })
-                    },
-                    Slice::Index { value } => {
-                        (opt, Slice::Index { value: Expression::Tuple {
-                            elts: vec![value], ctx: ExprContext::Load } })
-                    },
-                    _ => panic!("parsing error: `parse_subscript_list`")
-                }
-            },
-            _ => (opt, slice)
+        if trailing_comma {
+            match slice {
+                Slice::Slice { .. } => {
+                    (opt, Slice::ExtSlice { dims: vec![slice] })
+                },
+                Slice::Index { value } => {
+                    (opt, Slice::Index { value: Expression::Tuple {
+                        elts: vec![value], ctx: ExprContext::Load } })
+                },
+                _ => panic!("parsing error: `parse_subscript_list`")
+            }
+        } else {
+            (opt, slice)
         }
     } else {
-        // Check to see if every slice is an Index, if so create a tuple,
-        // otherwise make an ExtSlice.
-        unimplemented!()
+        slices.insert(0, slice);
+
+        // If a Slice::Slice is found then we need to create an ExtSlice
+        // instead of a Index with a Tuple
+        let mut contains_slice = false;
+        for s in slices.iter() {
+            match *s {
+                Slice::Slice { .. } => contains_slice = true,
+                _ => ()
+            }
+        };
+
+        if contains_slice {
+            (opt, Slice::ExtSlice { dims: slices })
+        } else {
+            // Consumes `slices` variable
+            let expr_list = slices.into_iter().map(|s| {
+                match s {
+                    Slice::Index { value } => value,
+                    _ => panic!("parser error: expected Index values only")
+                }
+            }).collect();
+
+            (opt, Slice::Index { value: Expression::Tuple {
+                elts: expr_list, ctx: ExprContext::Load } })
+        }
     }
 }
 
