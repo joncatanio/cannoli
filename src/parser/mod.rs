@@ -446,47 +446,6 @@ fn parse_atom_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     parse_atom_trailer(opt, expr, stream)
 }
 
-fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
-    match util::get_token(&opt) {
-        Token::Lparen => {
-            let (opt, args, keywords) = parse_arglist(stream.next(), stream);
-
-            match util::get_token(&opt) {
-                Token::Rparen => parse_atom_trailer(stream.next(),
-                    Expression::Call { func: Box::new(expr), args, keywords },
-                    stream),
-                token => panic!("expected ')', found '{:?}'", token)
-            }
-        },
-        Token::Lbracket => {
-            let (opt, slice) = parse_subscript_list(stream.next(), stream);
-
-            match util::get_token_expect(&opt, Token::Rbracket) {
-                Token::Rbracket => parse_atom_trailer(stream.next(),
-                    Expression::Subscript {
-                        value: Box::new(expr), slice: Box::new(slice),
-                        ctx: ExprContext::Load
-                    },
-                    stream),
-                token => panic!("expected ']', found '{:?}'", token)
-            }
-        },
-        Token::Dot => {
-            match util::get_token(&stream.next()) {
-                Token::Identifier(attr) => parse_atom_trailer(stream.next(),
-                    Expression::Attribute {
-                        value: Box::new(expr), attr, ctx: ExprContext::Load
-                    },
-                    stream
-                ),
-                token => panic!("expected identifier, found '{:?}'", token)
-            }
-        },
-        _ => (opt, expr)
-    }
-}
-
 fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     match util::get_token(&opt) {
@@ -525,6 +484,47 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             (stream.next(),
                 Expression::NameConstant { value: Singleton::False }),
         token => panic!("parsing error, found '{:?}'", token)
+    }
+}
+
+fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+    match util::get_token(&opt) {
+        Token::Lparen => {
+            let (opt, args, keywords) = parse_arglist(stream.next(), stream);
+
+            match util::get_token(&opt) {
+                Token::Rparen => parse_atom_trailer(stream.next(),
+                    Expression::Call { func: Box::new(expr), args, keywords },
+                    stream),
+                token => panic!("expected ')', found '{:?}'", token)
+            }
+        },
+        Token::Lbracket => {
+            let (opt, slice) = parse_subscript_list(stream.next(), stream);
+
+            match util::get_token_expect(&opt, Token::Rbracket) {
+                Token::Rbracket => parse_atom_trailer(stream.next(),
+                    Expression::Subscript {
+                        value: Box::new(expr), slice: Box::new(slice),
+                        ctx: ExprContext::Load
+                    },
+                    stream),
+                token => panic!("expected ']', found '{:?}'", token)
+            }
+        },
+        Token::Dot => {
+            match util::get_token(&stream.next()) {
+                Token::Identifier(attr) => parse_atom_trailer(stream.next(),
+                    Expression::Attribute {
+                        value: Box::new(expr), attr, ctx: ExprContext::Load
+                    },
+                    stream
+                ),
+                token => panic!("expected identifier, found '{:?}'", token)
+            }
+        },
+        _ => (opt, expr)
     }
 }
 
