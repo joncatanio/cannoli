@@ -536,7 +536,8 @@ fn parse_subscript_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::Comma => true,
         _ => false
     };
-    let (opt, mut slices) = rec_parse_subscript_list(stream.next(), stream);
+    let opt = if trailing_comma { stream.next() } else { opt };
+    let (opt, mut slices) = rec_parse_subscript_list(opt, stream);
 
     if slices.is_empty() {
         if trailing_comma {

@@ -204,3 +204,221 @@ fn return_nested_call() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn slices_and_indexes_1() {
+    let stream = Lexer::new("return p[0]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Subscript {
+                value: Box::new(Expression::Name {
+                    id: String::from("p"),
+                    ctx: ExprContext::Load
+                }),
+                slice: Box::new(Slice::Index {
+                    value: Expression::Num {
+                        n: Number::DecInteger(String::from("0"))
+                    }
+                }),
+                ctx: ExprContext::Load
+            })}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn slices_and_indexes_2() {
+    let stream = Lexer::new("return p[0,]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Subscript {
+                value: Box::new(Expression::Name {
+                    id: String::from("p"),
+                    ctx: ExprContext::Load
+                }),
+                slice: Box::new(Slice::Index {
+                    value: Expression::Tuple {
+                        elts: vec![
+                            Expression::Num {
+                                n: Number::DecInteger(String::from("0"))
+                            }
+                        ],
+                        ctx: ExprContext::Load
+                    }
+                }),
+                ctx: ExprContext::Load
+            })}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn slices_and_indexes_3() {
+    let stream = Lexer::new("return p[0,a]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Subscript {
+                value: Box::new(Expression::Name {
+                    id: String::from("p"),
+                    ctx: ExprContext::Load
+                }),
+                slice: Box::new(Slice::Index {
+                    value: Expression::Tuple {
+                        elts: vec![
+                            Expression::Num {
+                                n: Number::DecInteger(String::from("0"))
+                            },
+                            Expression::Name {
+                                id: String::from("a"),
+                                ctx: ExprContext::Load
+                            }
+                        ],
+                        ctx: ExprContext::Load
+                    }
+                }),
+                ctx: ExprContext::Load
+            })}
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    // Add trailing comma, should result in the same AST
+    let stream = Lexer::new("return p[0,a,]\n");
+    let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn slices_and_indexes_4() {
+    let stream = Lexer::new("return p[1:4:-1]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Subscript {
+                value: Box::new(Expression::Name {
+                    id: String::from("p"),
+                    ctx: ExprContext::Load
+                }),
+                slice: Box::new(Slice::Slice {
+                    lower: Some(Expression::Num {
+                        n: Number::DecInteger(String::from("1"))
+                    }),
+                    upper: Some(Expression::Num {
+                        n: Number::DecInteger(String::from("4"))
+                    }),
+                    step: Some(Expression::UnaryOp {
+                        op: UnaryOperator::USub,
+                        operand: Box::new(Expression::Num {
+                            n: Number::DecInteger(String::from("1"))
+                        })
+                    })
+                }),
+                ctx: ExprContext::Load
+            })}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn slices_and_indexes_5() {
+    let stream = Lexer::new("return p[1:4:-1,]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Subscript {
+                value: Box::new(Expression::Name {
+                    id: String::from("p"),
+                    ctx: ExprContext::Load
+                }),
+                slice: Box::new(Slice::ExtSlice {
+                    dims: vec![
+                        Slice::Slice {
+                            lower: Some(Expression::Num {
+                                n: Number::DecInteger(String::from("1"))
+                            }),
+                            upper: Some(Expression::Num {
+                                n: Number::DecInteger(String::from("4"))
+                            }),
+                            step: Some(Expression::UnaryOp {
+                                op: UnaryOperator::USub,
+                                operand: Box::new(Expression::Num {
+                                    n: Number::DecInteger(String::from("1"))
+                                })
+                            })
+                        }
+                    ]
+                }),
+                ctx: ExprContext::Load
+            })}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn slices_and_indexes_6() {
+    let stream = Lexer::new("return p[:]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Subscript {
+                value: Box::new(Expression::Name {
+                    id: String::from("p"),
+                    ctx: ExprContext::Load
+                }),
+                slice: Box::new(Slice::Slice {
+                    lower: None,
+                    upper: None,
+                    step: None
+                }),
+                ctx: ExprContext::Load
+            })}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn slices_and_indexes_7() {
+    let stream = Lexer::new("return p[:,0]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Return { value: Some(Expression::Subscript {
+                value: Box::new(Expression::Name {
+                    id: String::from("p"),
+                    ctx: ExprContext::Load
+                }),
+                slice: Box::new(Slice::ExtSlice {
+                    dims: vec![
+                        Slice::Slice {
+                            lower: None,
+                            upper: None,
+                            step: None
+                        },
+                        Slice::Index {
+                            value: Expression::Num {
+                                n: Number::DecInteger(String::from("0"))
+                            }
+                        }
+                    ]
+                }),
+                ctx: ExprContext::Load
+            })}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
