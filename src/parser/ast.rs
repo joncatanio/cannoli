@@ -7,13 +7,14 @@ pub enum Ast {
 
 #[derive(Debug, PartialEq)]
 pub enum Statement {
+    Return { value: Option<Expression> },
+    Raise { exc: Option<Expression>, cause: Option<Expression> },
     Global { names: Vec<String> },
     Nonlocal { names: Vec<String> },
+    Expr { value: Expression },
     Pass,
     Break,
     Continue,
-    Return { value: Option<Expression> },
-    Expr { value: Expression },
 }
 
 #[derive(Debug, PartialEq)]

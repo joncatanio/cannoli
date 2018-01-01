@@ -152,7 +152,7 @@ fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::Break    => (stream.next(), Statement::Break),
         Token::Continue => (stream.next(), Statement::Continue),
         Token::Return   => parse_return_stmt(stream.next(), stream),
-        Token::Raise    => unimplemented!(),
+        Token::Raise    => parse_raise_stmt(stream.next(), stream),
         Token::Yield    => parse_yield_stmt(stream.next(), stream),
         _ => unimplemented!()
     }
@@ -167,6 +167,29 @@ fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         (opt, Statement::Return { value: Some(test_list) })
     } else {
         (opt, Statement::Return { value: None })
+    }
+}
+
+fn parse_raise_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    if util::valid_test_expr(&util::get_token(&opt)) {
+        let (opt, exc) = parse_test_expr(opt, stream);
+
+        match util::get_token(&opt) {
+            Token::From => {
+                let opt = stream.next();
+
+                if !util::valid_test_expr(&util::get_token(&opt)) {
+                    panic!("syntax error: expected value after 'from'")
+                }
+
+                let (opt, cause) = parse_test_expr(opt, stream);
+                (opt, Statement::Raise { exc: Some(exc), cause: Some(cause) })
+            },
+            _ => (opt, Statement::Raise { exc: Some(exc), cause: None })
+        }
+    } else {
+        (opt, Statement::Raise { exc: None, cause: None })
     }
 }
 
@@ -886,12 +909,12 @@ fn parse_yield_arg(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::From => {
             let opt = stream.next();
 
-            if util::valid_test_expr(&util::get_token(&opt)) {
-                let (opt, expr) = parse_test_expr(opt, stream);
-                (opt, Expression::YieldFrom { value: Box::new(expr) })
-            } else {
+            if !util::valid_test_expr(&util::get_token(&opt)) {
                 panic!("syntax error: expected value after 'from'")
             }
+
+            let (opt, expr) = parse_test_expr(opt, stream);
+            (opt, Expression::YieldFrom { value: Box::new(expr) })
         },
         _ => {
             let (opt, expr) = parse_test_list(opt, stream);

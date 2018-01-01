@@ -489,3 +489,69 @@ fn yield_from_simple() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn raise() {
+    let stream = Lexer::new("raise\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Raise { exc: None, cause: None }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn raise_exc() {
+    let stream = Lexer::new("raise Exception(\"a\")\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Raise {
+                exc: Some(Expression::Call {
+                    func: Box::new(Expression:: Name {
+                        id: String::from("Exception"),
+                        ctx: ExprContext::Load
+                    }),
+                    args: vec![Expression::Str { s: String::from("a") }],
+                    keywords: vec![]
+                }),
+                cause: None
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn raise_exc_from_cause() {
+    let stream = Lexer::new("raise Exception(\"a\") from Exception(\"b\")\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Raise {
+                exc: Some(Expression::Call {
+                    func: Box::new(Expression:: Name {
+                        id: String::from("Exception"),
+                        ctx: ExprContext::Load
+                    }),
+                    args: vec![Expression::Str { s: String::from("a") }],
+                    keywords: vec![]
+                }),
+                cause: Some(Expression::Call {
+                    func: Box::new(Expression:: Name {
+                        id: String::from("Exception"),
+                        ctx: ExprContext::Load
+                    }),
+                    args: vec![Expression::Str { s: String::from("b") }],
+                    keywords: vec![]
+                }),
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
