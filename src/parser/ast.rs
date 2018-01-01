@@ -24,6 +24,8 @@ pub enum Expression {
     If { test: Box<Expression>, body: Box<Expression>,
         orelse: Box<Expression> },
     Generator { elt: Box<Expression>, generators: Vec<Comprehension> },
+    Yield { value: Option<Box<Expression>> },
+    YieldFrom { value: Box<Expression> },
     Compare { left: Box<Expression>, ops: Vec<CmpOperator>,
         comparators: Vec<Expression> },
     Call { func: Box<Expression>, args: Vec<Expression>,

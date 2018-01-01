@@ -106,6 +106,8 @@ pub fn valid_flow_stmt(token: &Token) -> bool {
         Token::Break    => true,
         Token::Continue => true,
         Token::Return   => true,
+        Token::Raise    => true,
+        Token::Yield    => true,
         _ => false
     }
 }
@@ -176,6 +178,13 @@ pub fn valid_argument(token: &Token) -> bool {
 pub fn valid_subscript(token: &Token) -> bool {
     match *token {
         Token::Semi => true,
+        _ => valid_test_expr(token)
+    }
+}
+
+pub fn valid_yield_arg(token: &Token) -> bool {
+    match *token {
+        Token::From => true,
         _ => valid_test_expr(token)
     }
 }

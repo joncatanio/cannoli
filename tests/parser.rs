@@ -422,3 +422,70 @@ fn slices_and_indexes_7() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn yield_no_arg() {
+    let stream = Lexer::new("yield\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr { value: Expression::Yield { value: None } }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn yield_testlist_single() {
+    let stream = Lexer::new("yield 1\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr { value: Expression::Yield {
+                value: Some(Box::new(Expression::Num {
+                    n: Number::DecInteger(String::from("1"))
+                }))
+            }}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn yield_testlist_tuple() {
+    let stream = Lexer::new("yield 1,\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr { value: Expression::Yield {
+                value: Some(Box::new(Expression::Tuple {
+                    elts: vec![Expression::Num {
+                        n: Number::DecInteger(String::from("1"))
+                    }],
+                    ctx: ExprContext::Load
+                }))
+            }}
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn yield_from_simple() {
+    let stream = Lexer::new("yield from 1\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr { value: Expression::YieldFrom {
+                value: Box::new(Expression::Num {
+                    n: Number::DecInteger(String::from("1"))
+                })
+            }}
+        ]
+    };
+    assert_eq!(ast, expected);
+}

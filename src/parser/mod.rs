@@ -153,7 +153,7 @@ fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::Continue => (stream.next(), Statement::Continue),
         Token::Return   => parse_return_stmt(stream.next(), stream),
         Token::Raise    => unimplemented!(),
-        Token::Yield    => unimplemented!(), // Will return Statement::Expr
+        Token::Yield    => parse_yield_stmt(stream.next(), stream),
         _ => unimplemented!()
     }
 }
@@ -168,6 +168,12 @@ fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     } else {
         (opt, Statement::Return { value: None })
     }
+}
+
+fn parse_yield_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let (opt, value) = parse_yield_expr(opt, stream);
+    (opt, Statement::Expr { value })
 }
 
 fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
@@ -863,4 +869,33 @@ fn parse_comp_if(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
     ifs.push(expr);
     generators.push(Comprehension::Comprehension { target, iter, ifs });
     parse_comp_iter(opt, Expression::Generator { elt, generators }, stream)
+}
+
+fn parse_yield_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    if util::valid_yield_arg(&util::get_token(&opt)) {
+        parse_yield_arg(opt, stream)
+    } else {
+        (opt, Expression::Yield { value: None })
+    }
+}
+
+fn parse_yield_arg(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    match util::get_token(&opt) {
+        Token::From => {
+            let opt = stream.next();
+
+            if util::valid_test_expr(&util::get_token(&opt)) {
+                let (opt, expr) = parse_test_expr(opt, stream);
+                (opt, Expression::YieldFrom { value: Box::new(expr) })
+            } else {
+                panic!("syntax error: expected value after 'from'")
+            }
+        },
+        _ => {
+            let (opt, expr) = parse_test_list(opt, stream);
+            (opt, Expression::Yield { value: Some(Box::new(expr)) })
+        }
+    }
 }
