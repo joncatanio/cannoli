@@ -348,6 +348,10 @@ fn rec_parse_comparison_expr(opt: Option<(usize, ResultToken)>,
 // the check for an asterisk should be done prior to calling this function
 fn parse_star_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
+    if !util::valid_expr(&util::get_token(&opt)) {
+        panic!("syntax error: expected valid expression after '*'")
+    }
+
     let (opt, expr) = parse_expr(opt, stream);
     (opt, Expression::Starred { value: Box::new(expr), ctx: ExprContext::Load })
 }
@@ -479,7 +483,21 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     match util::get_token(&opt) {
         Token::Lparen => {
-            unimplemented!()
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+            let (opt, expr) = if util::valid_atom_paren(&token) {
+                match token {
+                    Token::Yield => parse_yield_expr(stream.next(), stream),
+                    _ => parse_test_list_comp(opt, stream)
+                }
+            } else {
+                (opt, Expression::Tuple {elts: vec![], ctx: ExprContext::Load})
+            };
+
+            match util::get_token(&opt) {
+                Token::Rparen => (stream.next(), expr),
+                _ => panic!("syntax error: expected closing paren")
+            }
         },
         Token::Lbracket => {
             unimplemented!()
@@ -514,6 +532,11 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 Expression::NameConstant { value: Singleton::False }),
         token => panic!("parsing error, found '{:?}'", token)
     }
+}
+
+fn parse_test_list_comp(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    unimplemented!()
 }
 
 fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,

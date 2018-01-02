@@ -189,6 +189,20 @@ pub fn valid_yield_arg(token: &Token) -> bool {
     }
 }
 
+pub fn valid_atom_paren(token: &Token) -> bool {
+    match *token {
+        Token::Yield => true,
+        _ => valid_test_list_comp(token)
+    }
+}
+
+pub fn valid_test_list_comp(token: &Token) -> bool {
+    match *token {
+        Token::Times => true,
+        _ => valid_test_expr(token)
+    }
+}
+
 /* Utility Types */
 #[derive(Debug, PartialEq)]
 pub enum ArgType {
