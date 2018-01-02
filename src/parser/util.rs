@@ -209,3 +209,9 @@ pub enum ArgType {
     Positional,
     Keyword
 }
+
+#[derive(Debug, PartialEq)]
+pub enum TLCompType {
+    Tuple,
+    List
+}

@@ -41,6 +41,7 @@ pub enum Expression {
     Subscript { value: Box<Expression>, slice: Box<Slice>, ctx: ExprContext },
     Starred { value: Box<Expression>, ctx: ExprContext },
     Name { id: String, ctx: ExprContext },
+    List { elts: Vec<Expression>, ctx: ExprContext },
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
 }
 

@@ -4,7 +4,7 @@ mod util;
 use super::lexer::{Lexer, ResultToken};
 use super::lexer::tokens::Token;
 use self::ast::*;
-use self::util::ArgType;
+use self::util::{ArgType, TLCompType};
 
 pub fn parse_start_symbol(mut stream: Lexer) -> Ast {
     let (next_token, ast) = parse_file_input(stream.next(), &mut stream);
@@ -488,7 +488,7 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             let (opt, expr) = if util::valid_atom_paren(&token) {
                 match token {
                     Token::Yield => parse_yield_expr(stream.next(), stream),
-                    _ => parse_test_list_comp(opt, stream)
+                    _ => parse_test_list_comp(opt, TLCompType::Tuple, stream)
                 }
             } else {
                 (opt, Expression::Tuple {elts: vec![], ctx: ExprContext::Load})
@@ -500,7 +500,18 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             }
         },
         Token::Lbracket => {
-            unimplemented!()
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+            let (opt, expr) = if util::valid_test_list_comp(&token) {
+                parse_test_list_comp(opt, TLCompType::List, stream)
+            } else {
+                (opt, Expression::List { elts: vec![], ctx: ExprContext::Load })
+            };
+
+            match util::get_token(&opt) {
+                Token::Rbracket => (stream.next(), expr),
+                _ => panic!("syntax error: expected closing bracket")
+            }
         },
         Token::Lbrace => {
             unimplemented!()
@@ -534,8 +545,8 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_test_list_comp(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_test_list_comp(opt: Option<(usize, ResultToken)>, ctype: TLCompType,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, expr) = match util::get_token(&opt) {
         Token::Times => parse_star_expr(stream.next(), stream),
         _ => parse_test_expr(opt, stream)
@@ -547,15 +558,28 @@ fn parse_test_list_comp(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 rec_parse_test_list_comp(stream.next(), stream);
 
             elts.insert(0, expr);
-            (opt, Expression::Tuple { elts, ctx: ExprContext::Load })
+            match ctype {
+                TLCompType::Tuple =>
+                    (opt, Expression::Tuple { elts, ctx: ExprContext::Load }),
+                TLCompType::List  =>
+                    (opt, Expression::List { elts, ctx: ExprContext::Load })
+            }
         },
         Token::For => {
-            unimplemented!()
+            match ctype {
+                TLCompType::Tuple => parse_comp_for(stream.next(),
+                    Expression::Generator { elt: Box::new(expr),
+                    generators: vec![] }, stream),
+                TLCompType::List  => parse_comp_for(stream.next(),
+                    Expression::ListComp { elt: Box::new(expr),
+                    generators: vec![] }, stream)
+            }
         },
         _ => (opt, expr)
     }
 }
 
+// Gets the list of test/star expressions for a non-comprehension descent
 fn rec_parse_test_list_comp(opt: Option<(usize, ResultToken)>,
     stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Vec<Expression>) {
     let token = util::get_token(&opt);
@@ -901,18 +925,18 @@ fn parse_argument(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_comp_iter(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
+fn parse_comp_iter(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
     stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
     match util::get_token(&opt) {
-        Token::For => parse_comp_for(stream.next(), gen_expr, stream),
-        Token::If  => parse_comp_if(stream.next(), gen_expr, stream),
-        _ => (opt, gen_expr)
+        Token::For => parse_comp_for(stream.next(), gc_expr, stream),
+        Token::If  => parse_comp_if(stream.next(), gc_expr, stream),
+        _ => (opt, gc_expr)
     }
 }
 
 // Returns updated Generator/Comp, it's up to the caller to supply this method
 // with a Expression::(Generator|*Comp) that will be "filled"
-fn parse_comp_for(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
+fn parse_comp_for(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
     stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, mut expr_list) = parse_expr_list(opt, stream);
     let token = util::get_token(&opt);
@@ -931,32 +955,54 @@ fn parse_comp_for(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
     } else {
         Expression::Tuple { elts: expr_list, ctx: ExprContext::Load }
     };
-    let (elt, mut generators) = match gen_expr {
-        Expression::Generator { elt, generators } => (elt, generators),
-        _ => panic!("expected Expression::Generator, found {:?}", gen_expr)
-    };
     let comp = Comprehension::Comprehension { target, iter, ifs: vec![] };
 
-    generators.push(comp);
-    parse_comp_iter(opt, Expression::Generator { elt, generators }, stream)
+    match gc_expr {
+        Expression::Generator { elt, mut generators } => {
+            generators.push(comp);
+            parse_comp_iter(opt,
+                Expression::Generator { elt, generators }, stream)
+        },
+        Expression::ListComp { elt, mut generators }  => {
+            generators.push(comp);
+            parse_comp_iter(opt,
+                Expression::ListComp { elt, generators }, stream)
+        },
+        _ => panic!("parsing error: expected gen/comp, found {:?}", gc_expr)
+    }
 }
 
 // Modifies the most recent Comprehension within the generators
-fn parse_comp_if(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
+fn parse_comp_if(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
     stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, expr) = parse_test_nocond(opt, stream);
-    let (elt, mut generators) = match gen_expr {
-        Expression::Generator { elt, generators } => (elt, generators),
-        _ => panic!("expected Expression::Generator, found {:?}", gen_expr)
-    };
-    let (target, iter, mut ifs) = match generators.pop().unwrap() {
-        Comprehension::Comprehension { target, iter, ifs } =>
-            (target, iter, ifs)
-    };
 
-    ifs.push(expr);
-    generators.push(Comprehension::Comprehension { target, iter, ifs });
-    parse_comp_iter(opt, Expression::Generator { elt, generators }, stream)
+    // TODO refactor this in a Rust-esque manner to limit repeated code
+    match gc_expr {
+        Expression::Generator { elt, mut generators } => {
+            let (target, iter, mut ifs) = match generators.pop().unwrap() {
+                Comprehension::Comprehension { target, iter, ifs } =>
+                    (target, iter, ifs)
+            };
+
+            ifs.push(expr);
+            generators.push(Comprehension::Comprehension { target, iter, ifs });
+            parse_comp_iter(opt,
+                Expression::Generator { elt, generators }, stream)
+        },
+        Expression::ListComp { elt, mut generators } => {
+            let (target, iter, mut ifs) = match generators.pop().unwrap() {
+                Comprehension::Comprehension { target, iter, ifs } =>
+                    (target, iter, ifs)
+            };
+
+            ifs.push(expr);
+            generators.push(Comprehension::Comprehension { target, iter, ifs });
+            parse_comp_iter(opt,
+                Expression::ListComp { elt, generators }, stream)
+        },
+        _ => panic!("parsing error: expected gen/comp, found {:?}", gc_expr)
+    }
 }
 
 fn parse_yield_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
