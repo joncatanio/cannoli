@@ -235,7 +235,10 @@ fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_test_nocond(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
-    unimplemented!()
+    match util::get_token(&opt) {
+        Token::Lambda => unimplemented!(),
+        _ => parse_or_test(opt, stream)
+    }
 }
 
 fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
@@ -873,7 +876,26 @@ fn parse_dict_set_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         }
     };
 
-    unimplemented!()
+    if is_dict {
+        unimplemented!()
+    } else {
+        match util::get_token(&opt) {
+            Token::Comma => {
+                // Reuse the testlist comp builder since it's the same pattern
+                let (opt, mut elts) =
+                    rec_parse_test_list_comp(stream.next(), stream);
+
+                elts.insert(0, expr);
+                (opt, Expression::Set { elts })
+            },
+            Token::For => {
+                parse_comp_for(stream.next(),
+                    Expression::SetComp { elt: Box::new(expr),
+                    generators: vec![] }, stream)
+            },
+            _ => (opt, Expression::Set { elts: vec![expr] })
+        }
+    }
 }
 
 fn parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
@@ -1016,6 +1038,11 @@ fn parse_comp_for(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
             parse_comp_iter(opt,
                 Expression::ListComp { elt, generators }, stream)
         },
+        Expression::SetComp { elt, mut generators }  => {
+            generators.push(comp);
+            parse_comp_iter(opt,
+                Expression::SetComp { elt, generators }, stream)
+        },
         _ => panic!("parsing error: expected gen/comp, found {:?}", gc_expr)
     }
 }
@@ -1048,6 +1075,17 @@ fn parse_comp_if(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
             generators.push(Comprehension::Comprehension { target, iter, ifs });
             parse_comp_iter(opt,
                 Expression::ListComp { elt, generators }, stream)
+        },
+        Expression::SetComp { elt, mut generators } => {
+            let (target, iter, mut ifs) = match generators.pop().unwrap() {
+                Comprehension::Comprehension { target, iter, ifs } =>
+                    (target, iter, ifs)
+            };
+
+            ifs.push(expr);
+            generators.push(Comprehension::Comprehension { target, iter, ifs });
+            parse_comp_iter(opt,
+                Expression::SetComp { elt, generators }, stream)
         },
         _ => panic!("parsing error: expected gen/comp, found {:?}", gc_expr)
     }
