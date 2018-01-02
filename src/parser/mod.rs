@@ -514,7 +514,19 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             }
         },
         Token::Lbrace => {
-            unimplemented!()
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+            let (opt, expr) = if util::valid_dict_set_maker(&token) {
+                parse_dict_set_maker(opt, stream)
+            } else {
+                // There is no empty set literal, default to dict
+                (opt, Expression::Dict { keys: vec![], values: vec![] })
+            };
+
+            match util::get_token(&opt) {
+                Token::Rbrace => (stream.next(), expr),
+                _ => panic!("syntax error: expected closing brace")
+            }
         },
         Token::Identifier(id) =>
             (stream.next(), Expression::Name { id, ctx: ExprContext::Load }),
@@ -826,6 +838,42 @@ fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         },
         _ => (opt, test_expr)
     }
+}
+
+fn parse_dict_set_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    // Get the first expression value and determine if a dict|set is being made
+    let (opt, expr, value, is_dict) = match util::get_token(&opt) {
+        Token::Exponent => {
+            let (opt, expr) = parse_expr(stream.next(), stream);
+            (opt, expr, Some(Expression::None), true)
+        },
+        Token::Times => {
+            let (opt, expr) = parse_star_expr(stream.next(), stream);
+            (opt, expr, None, false)
+        }
+        _ => {
+            let (opt, expr) = parse_test_expr(opt, stream);
+
+            match util::get_token(&opt) {
+                Token::Colon => {
+                    let opt = stream.next();
+                    let token = util::get_token(&opt);
+
+                    if !util::valid_test_expr(&token) {
+                        panic!("syntax error: expected right hand expression \
+                                in dictionary creation, found {:?}", token)
+                    }
+
+                    let (opt, value) = parse_test_expr(opt, stream);
+                    (opt, expr, Some(value), true)
+                },
+                _ => (opt, expr, None, false)
+            }
+        }
+    };
+
+    unimplemented!()
 }
 
 fn parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)

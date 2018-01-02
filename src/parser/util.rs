@@ -203,6 +203,13 @@ pub fn valid_test_list_comp(token: &Token) -> bool {
     }
 }
 
+pub fn valid_dict_set_maker(token: &Token) -> bool {
+    match *token {
+        Token::Exponent => true,
+        _ => valid_test_list_comp(token)
+    }
+}
+
 /* Utility Types */
 #[derive(Debug, PartialEq)]
 pub enum ArgType {
