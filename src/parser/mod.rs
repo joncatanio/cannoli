@@ -536,7 +536,49 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_test_list_comp(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
-    unimplemented!()
+    let (opt, expr) = match util::get_token(&opt) {
+        Token::Times => parse_star_expr(stream.next(), stream),
+        _ => parse_test_expr(opt, stream)
+    };
+
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let (opt, mut elts) =
+                rec_parse_test_list_comp(stream.next(), stream);
+
+            elts.insert(0, expr);
+            (opt, Expression::Tuple { elts, ctx: ExprContext::Load })
+        },
+        Token::For => {
+            unimplemented!()
+        },
+        _ => (opt, expr)
+    }
+}
+
+fn rec_parse_test_list_comp(opt: Option<(usize, ResultToken)>,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+    let token = util::get_token(&opt);
+
+    if util::valid_test_list_comp(&token) {
+        let (opt, expr) = match token {
+            Token::Times => parse_star_expr(stream.next(), stream),
+            _ => parse_test_expr(opt, stream)
+        };
+
+        match util::get_token(&opt) {
+            Token::Comma => {
+                let (opt, mut exprs) =
+                    rec_parse_test_list_comp(stream.next(), stream);
+
+                exprs.insert(0, expr);
+                (opt, exprs)
+            },
+            _ => (opt, vec![expr])
+        }
+    } else {
+        (opt, vec![])
+    }
 }
 
 fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
@@ -868,8 +910,8 @@ fn parse_comp_iter(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
     }
 }
 
-// Returns updated Generator, it's up to the caller to supply this method with
-// a Expression::Generator that will be "filled"
+// Returns updated Generator/Comp, it's up to the caller to supply this method
+// with a Expression::(Generator|*Comp) that will be "filled"
 fn parse_comp_for(opt: Option<(usize, ResultToken)>, gen_expr: Expression,
     stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
     let (opt, mut expr_list) = parse_expr_list(opt, stream);

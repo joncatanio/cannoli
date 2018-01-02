@@ -24,6 +24,8 @@ pub enum Expression {
     UnaryOp { op: UnaryOperator, operand: Box<Expression> },
     If { test: Box<Expression>, body: Box<Expression>,
         orelse: Box<Expression> },
+    ListComp { elt: Box<Expression>, generators: Vec<Comprehension> },
+    SetComp { elt: Box<Expression>, generators: Vec<Comprehension> },
     Generator { elt: Box<Expression>, generators: Vec<Comprehension> },
     Yield { value: Option<Box<Expression>> },
     YieldFrom { value: Box<Expression> },
