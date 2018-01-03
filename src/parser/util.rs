@@ -94,10 +94,13 @@ pub fn get_factor_op(opt: &Option<(usize, ResultToken)>)
  * a given rule. */
 pub fn valid_simple_stmt(token: &Token) -> bool {
     match *token {
+        Token::Del      => true,
         Token::Pass     => true,
         Token::Global   => true,
         Token::Nonlocal => true,
-        _ => valid_flow_stmt(token)
+        Token::Assert   => true,
+        _ if valid_flow_stmt(token) => true,
+        _ => valid_test_expr(token)
     }
 }
 
@@ -192,11 +195,11 @@ pub fn valid_yield_arg(token: &Token) -> bool {
 pub fn valid_atom_paren(token: &Token) -> bool {
     match *token {
         Token::Yield => true,
-        _ => valid_test_list_comp(token)
+        _ => valid_test_star(token)
     }
 }
 
-pub fn valid_test_list_comp(token: &Token) -> bool {
+pub fn valid_test_star(token: &Token) -> bool {
     match *token {
         Token::Times => true,
         _ => valid_test_expr(token)
@@ -206,7 +209,7 @@ pub fn valid_test_list_comp(token: &Token) -> bool {
 pub fn valid_dict_set_maker(token: &Token) -> bool {
     match *token {
         Token::Exponent => true,
-        _ => valid_test_list_comp(token)
+        _ => valid_test_star(token)
     }
 }
 

@@ -93,7 +93,46 @@ fn parse_small_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         ref token if util::valid_flow_stmt(&token) => {
             parse_flow_stmt(opt, stream)
         },
-        _ => unimplemented!()
+        Token::Del => unimplemented!(),
+        Token::Assert => unimplemented!(),
+        _ => parse_expr_stmt(opt, stream)
+    }
+}
+
+fn parse_expr_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let (opt, expr) = parse_test_list_star_expr(opt, stream);
+
+    (opt, Statement::Expr { value: expr })
+}
+
+fn parse_test_list_star_expr(opt: Option<(usize, ResultToken)>,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = match util::get_token(&opt) {
+        Token::Times => parse_star_expr(stream.next(), stream),
+        _ => parse_test_expr(opt, stream)
+    };
+
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+
+            if util::valid_test_star(&token) {
+                let (opt, tup_expr) = parse_test_list_star_expr(opt, stream);
+                let mut elts = match tup_expr {
+                    Expression::Tuple { elts, .. } => elts,
+                    expr => vec![expr]
+                };
+
+                elts.insert(0, expr);
+                (opt, Expression::Tuple { elts, ctx: ExprContext::Load })
+            } else {
+                (opt, Expression::Tuple { elts: vec![expr],
+                    ctx: ExprContext::Load })
+            }
+        },
+        _ => (opt, expr)
     }
 }
 
@@ -505,7 +544,7 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::Lbracket => {
             let opt = stream.next();
             let token = util::get_token(&opt);
-            let (opt, expr) = if util::valid_test_list_comp(&token) {
+            let (opt, expr) = if util::valid_test_star(&token) {
                 parse_test_list_comp(opt, TLCompType::List, stream)
             } else {
                 (opt, Expression::List { elts: vec![], ctx: ExprContext::Load })
@@ -599,7 +638,7 @@ fn rec_parse_test_list_comp(opt: Option<(usize, ResultToken)>,
     stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Vec<Expression>) {
     let token = util::get_token(&opt);
 
-    if util::valid_test_list_comp(&token) {
+    if util::valid_test_star(&token) {
         let (opt, expr) = match token {
             Token::Times => parse_star_expr(stream.next(), stream),
             _ => parse_test_expr(opt, stream)
