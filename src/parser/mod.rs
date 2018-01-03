@@ -849,7 +849,7 @@ fn parse_dict_set_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     let (opt, expr, value, is_dict) = match util::get_token(&opt) {
         Token::Exponent => {
             let (opt, expr) = parse_expr(stream.next(), stream);
-            (opt, expr, Some(Expression::None), true)
+            (opt, Expression::None, Some(expr), true)
         },
         Token::Times => {
             let (opt, expr) = parse_star_expr(stream.next(), stream);
@@ -877,24 +877,101 @@ fn parse_dict_set_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     };
 
     if is_dict {
-        unimplemented!()
+        parse_dict_maker(opt, expr, value.unwrap(), stream)
     } else {
+        parse_set_maker(opt, expr, stream)
+    }
+}
+
+fn parse_dict_maker(opt: Option<(usize, ResultToken)>, key: Expression,
+    value: Expression, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let (opt, mut keys, mut values) =
+                rec_parse_dict_maker(stream.next(), stream);
+
+            keys.insert(0, key);
+            values.insert(0, value);
+            (opt, Expression::Dict { keys, values })
+        },
+        Token::For => {
+            // TODO error if dict unpacking was matched above
+            parse_comp_for(stream.next(),
+                Expression::DictComp { key: Box::new(key),
+                value: Box::new(value), generators: vec![] }, stream)
+        },
+        _ => (opt, Expression::Dict {
+            keys: vec![key], values: vec![value] })
+    }
+}
+
+fn rec_parse_dict_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Expression>, Vec<Expression>) {
+    let token = util::get_token(&opt);
+
+    if util::valid_dict_maker(&token) {
+        let (opt, key, value) = match util::get_token(&opt) {
+            Token::Exponent => {
+                let (opt, expr) = parse_expr(stream.next(), stream);
+                (opt, Expression::None, expr)
+            },
+            _ => {
+                let (opt, key) = parse_test_expr(opt, stream);
+                let token = util::get_token(&opt);
+
+                match token {
+                    Token::Colon => {
+                        let opt = stream.next();
+                        let token = util::get_token(&opt);
+
+                        if !util::valid_test_expr(&token) {
+                            panic!("syntax error: expected right \
+                                    hand expression in dictionary creation, \
+                                    found {:?}", token)
+                        }
+
+                        let (opt, value) = parse_test_expr(opt, stream);
+                        (opt, key, value)
+                    },
+                    _ => panic!("syntax error: expected ':', found {:?}", token)
+                }
+            }
+        };
+
         match util::get_token(&opt) {
             Token::Comma => {
-                // Reuse the testlist comp builder since it's the same pattern
-                let (opt, mut elts) =
-                    rec_parse_test_list_comp(stream.next(), stream);
+                let (opt, mut keys, mut values) =
+                    rec_parse_dict_maker(stream.next(), stream);
 
-                elts.insert(0, expr);
-                (opt, Expression::Set { elts })
+                keys.insert(0, key);
+                values.insert(0, value);
+                (opt, keys, values)
             },
-            Token::For => {
-                parse_comp_for(stream.next(),
-                    Expression::SetComp { elt: Box::new(expr),
-                    generators: vec![] }, stream)
-            },
-            _ => (opt, Expression::Set { elts: vec![expr] })
+            _ => (opt, vec![key], vec![value])
         }
+    } else {
+        (opt, vec![], vec![])
+    }
+}
+
+fn parse_set_maker(opt: Option<(usize, ResultToken)>, expr: Expression,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+    match util::get_token(&opt) {
+        Token::Comma => {
+            // Reuse the testlist comp builder since it's the same pattern
+            let (opt, mut elts) =
+                rec_parse_test_list_comp(stream.next(), stream);
+
+            elts.insert(0, expr);
+            (opt, Expression::Set { elts })
+        },
+        Token::For => {
+            parse_comp_for(stream.next(),
+                Expression::SetComp { elt: Box::new(expr),
+                generators: vec![] }, stream)
+        },
+        _ => (opt, Expression::Set { elts: vec![expr] })
     }
 }
 
@@ -1043,6 +1120,11 @@ fn parse_comp_for(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
             parse_comp_iter(opt,
                 Expression::SetComp { elt, generators }, stream)
         },
+        Expression::DictComp { key, value, mut generators }  => {
+            generators.push(comp);
+            parse_comp_iter(opt,
+                Expression::DictComp { key, value, generators }, stream)
+        },
         _ => panic!("parsing error: expected gen/comp, found {:?}", gc_expr)
     }
 }
@@ -1086,6 +1168,17 @@ fn parse_comp_if(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
             generators.push(Comprehension::Comprehension { target, iter, ifs });
             parse_comp_iter(opt,
                 Expression::SetComp { elt, generators }, stream)
+        },
+        Expression::DictComp { key, value, mut generators } => {
+            let (target, iter, mut ifs) = match generators.pop().unwrap() {
+                Comprehension::Comprehension { target, iter, ifs } =>
+                    (target, iter, ifs)
+            };
+
+            ifs.push(expr);
+            generators.push(Comprehension::Comprehension { target, iter, ifs });
+            parse_comp_iter(opt,
+                Expression::DictComp { key, value, generators }, stream)
         },
         _ => panic!("parsing error: expected gen/comp, found {:?}", gc_expr)
     }

@@ -210,6 +210,13 @@ pub fn valid_dict_set_maker(token: &Token) -> bool {
     }
 }
 
+pub fn valid_dict_maker(token: &Token) -> bool {
+    match *token {
+        Token::Exponent => true,
+        _ => valid_test_expr(token)
+    }
+}
+
 /* Utility Types */
 #[derive(Debug, PartialEq)]
 pub enum ArgType {
