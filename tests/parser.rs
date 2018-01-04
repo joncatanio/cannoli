@@ -1089,3 +1089,38 @@ fn augmented_assign() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn assert() {
+    let stream = Lexer::new("assert condition, \"message\"\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Assert {
+                test: Expression::Name {
+                    id: String::from("condition"),
+                    ctx: ExprContext::Load
+                },
+                msg: Some(Expression::Str { s: String::from("message") })
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("assert condition\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Assert {
+                test: Expression::Name {
+                    id: String::from("condition"),
+                    ctx: ExprContext::Load
+                },
+                msg: None
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}

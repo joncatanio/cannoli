@@ -93,8 +93,8 @@ fn parse_small_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         ref token if util::valid_flow_stmt(&token) => {
             parse_flow_stmt(opt, stream)
         },
-        Token::Del => unimplemented!(),
-        Token::Assert => unimplemented!(),
+        Token::Del => parse_del_stmt(stream.next(), stream),
+        Token::Assert => parse_assert_stmt(stream.next(), stream),
         _ => parse_expr_stmt(opt, stream)
     }
 }
@@ -222,6 +222,18 @@ fn parse_aug_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     (stream.next(), op)
 }
 
+fn parse_del_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    if !util::valid_expr_list(&util::get_token(&opt)) {
+        panic!("syntax error: invalid syntax after del keyword")
+    }
+
+    // TODO validate the targets to ensure deletion of proper things
+    // TODO pass in context as Del
+    let (opt, targets) = parse_expr_list(opt, stream);
+    (opt, Statement::Delete { targets })
+}
+
 fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
     match util::get_token(&opt) {
@@ -230,7 +242,7 @@ fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::Return   => parse_return_stmt(stream.next(), stream),
         Token::Raise    => parse_raise_stmt(stream.next(), stream),
         Token::Yield    => parse_yield_stmt(stream.next(), stream),
-        _ => unimplemented!()
+        token => panic!("parser error: invalid flow_stmt token {:?}", token)
     }
 }
 
@@ -321,6 +333,28 @@ fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             }
         }
         token => panic!("expected 'identifier', found '{:?}'", token)
+    }
+}
+
+fn parse_assert_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    if !util::valid_test_expr(&util::get_token(&opt)) {
+        panic!("sytanx error: invalid syntax")
+    }
+
+    let (opt, test) = parse_test_expr(opt, stream);
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let opt = stream.next();
+
+            if !util::valid_test_expr(&util::get_token(&opt)) {
+                panic!("sytanx error: invalid syntax")
+            }
+
+            let (opt, msg) = parse_test_expr(opt, stream);
+            (opt, Statement::Assert { test, msg: Some(msg) })
+        },
+        _ => (opt, Statement::Assert { test, msg: None })
     }
 }
 
@@ -910,7 +944,7 @@ fn parse_sliceop(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 // Returns a Vec since there are multiple Expression values that wrap the
 // expression list. If a Vec of size one is returned, the contained
-// Expression should be pulled out.
+// Expression might be pulled out.
 fn parse_expr_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Expression>) {
     let (opt, expr) = match util::get_token(&opt) {

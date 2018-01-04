@@ -8,11 +8,13 @@ pub enum Ast {
 #[derive(Debug, PartialEq)]
 pub enum Statement {
     Return { value: Option<Expression> },
+    Delete { targets: Vec<Expression> },
     Assign { targets: Vec<Expression>, value: Expression },
     AugAssign { target: Expression, op: Operator, value: Expression },
     AnnAssign { target: Expression, annotation: Expression,
         value: Option<Expression> },
     Raise { exc: Option<Expression>, cause: Option<Expression> },
+    Assert { test: Expression, msg: Option<Expression> },
     Global { names: Vec<String> },
     Nonlocal { names: Vec<String> },
     Expr { value: Expression },
