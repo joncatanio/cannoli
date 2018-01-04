@@ -555,3 +555,537 @@ fn raise_exc_from_cause() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn dict_creation() {
+    let stream = Lexer::new("{}\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Dict {
+                    keys: vec![],
+                    values: vec![]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("{a:b}\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Dict {
+                    keys: vec![
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load }
+                    ],
+                    values: vec![
+                        Expression::Name { id: String::from("b"),
+                            ctx: ExprContext::Load }
+                    ]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("{a:c, **x, b:d,}\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Dict {
+                    keys: vec![
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                        Expression::None,
+                        Expression::Name { id: String::from("b"),
+                            ctx: ExprContext::Load }
+                    ],
+                    values: vec![
+                        Expression::Name { id: String::from("c"),
+                            ctx: ExprContext::Load },
+                        Expression::Name { id: String::from("x"),
+                            ctx: ExprContext::Load },
+                        Expression::Name { id: String::from("d"),
+                            ctx: ExprContext::Load }
+                    ]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("{a:c, **x, b:d}\n");
+    let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn list_creation() {
+    let stream = Lexer::new("[]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::List {
+                    elts: vec![],
+                    ctx: ExprContext::Load
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("[a,*b,]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::List {
+                    elts: vec![
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                        Expression::Starred {
+                            value: Box::new(
+                                Expression::Name { id: String::from("b"),
+                                    ctx: ExprContext::Load },
+                            ),
+                            ctx: ExprContext::Load
+                        }
+                    ],
+                    ctx: ExprContext::Load
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("[a,*b]\n");
+    let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn set_creation() {
+    let stream = Lexer::new("{a}\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Set {
+                    elts: vec![
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load }
+                    ],
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("{a, *b,}\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Set {
+                    elts: vec![
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                        Expression::Starred {
+                            value: Box::new(
+                                Expression::Name { id: String::from("b"),
+                                    ctx: ExprContext::Load },
+                            ),
+                            ctx: ExprContext::Load
+                        }
+                    ]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("{a, *b}\n");
+    let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn list_comprehension() {
+    let stream = Lexer::new("[a for x in y]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::ListComp {
+                    elt: Box::new(
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                    ),
+                    generators: vec![
+                        Comprehension::Comprehension {
+                            target: Expression::Name { id: String::from("x"),
+                                ctx: ExprContext::Load },
+                            iter: Expression::Name { id: String::from("y"),
+                                ctx: ExprContext::Load },
+                            ifs: vec![]
+                        }
+                    ]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("[a for x in y for g in q if True]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::ListComp {
+                    elt: Box::new(
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                    ),
+                    generators: vec![
+                        Comprehension::Comprehension {
+                            target: Expression::Name { id: String::from("x"),
+                                ctx: ExprContext::Load },
+                            iter: Expression::Name { id: String::from("y"),
+                                ctx: ExprContext::Load },
+                            ifs: vec![]
+                        },
+                        Comprehension::Comprehension {
+                            target: Expression::Name { id: String::from("g"),
+                                ctx: ExprContext::Load },
+                            iter: Expression::Name { id: String::from("q"),
+                                ctx: ExprContext::Load },
+                            ifs: vec![
+                                Expression::NameConstant {
+                                    value: Singleton::True
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+// TODO Update with proper contexts, that goes for all tests
+#[test]
+fn set_comprehension() {
+    let stream = Lexer::new("{a for x in y}\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::SetComp {
+                    elt: Box::new(
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                    ),
+                    generators: vec![
+                        Comprehension::Comprehension {
+                            target: Expression::Name { id: String::from("x"),
+                                ctx: ExprContext::Load },
+                            iter: Expression::Name { id: String::from("y"),
+                                ctx: ExprContext::Load },
+                            ifs: vec![]
+                        }
+                    ]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("{a for x in y for g in q if True}\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::SetComp {
+                    elt: Box::new(
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                    ),
+                    generators: vec![
+                        Comprehension::Comprehension {
+                            target: Expression::Name { id: String::from("x"),
+                                ctx: ExprContext::Load },
+                            iter: Expression::Name { id: String::from("y"),
+                                ctx: ExprContext::Load },
+                            ifs: vec![]
+                        },
+                        Comprehension::Comprehension {
+                            target: Expression::Name { id: String::from("g"),
+                                ctx: ExprContext::Load },
+                            iter: Expression::Name { id: String::from("q"),
+                                ctx: ExprContext::Load },
+                            ifs: vec![
+                                Expression::NameConstant {
+                                    value: Singleton::True
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn dict_comprehension() {
+    let stream = Lexer::new("{a:b for x in y}\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::DictComp {
+                    key: Box::new(
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                    ),
+                    value: Box::new(
+                        Expression::Name { id: String::from("b"),
+                            ctx: ExprContext::Load },
+                    ),
+                    generators: vec![
+                        Comprehension::Comprehension {
+                            target: Expression::Name { id: String::from("x"),
+                                ctx: ExprContext::Load },
+                            iter: Expression::Name { id: String::from("y"),
+                                ctx: ExprContext::Load },
+                            ifs: vec![]
+                        }
+                    ]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn assignment() {
+    let stream = Lexer::new("a = 3\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Assign {
+                targets: vec![
+                    Expression::Name { id: String::from("a"),
+                        ctx: ExprContext::Load }
+                ],
+                value: Expression::Num {
+                    n: Number::DecInteger(String::from("3"))
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("a = yield\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Assign {
+                targets: vec![
+                    Expression::Name { id: String::from("a"),
+                        ctx: ExprContext::Load }
+                ],
+                value: Expression::Yield {
+                    value: None
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("a = b = c = d = 3\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Assign {
+                targets: vec![
+                    Expression::Name { id: String::from("a"),
+                        ctx: ExprContext::Load },
+                    Expression::Name { id: String::from("b"),
+                        ctx: ExprContext::Load },
+                    Expression::Name { id: String::from("c"),
+                        ctx: ExprContext::Load },
+                    Expression::Name { id: String::from("d"),
+                        ctx: ExprContext::Load }
+                ],
+                value: Expression::Num {
+                    n: Number::DecInteger(String::from("3"))
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn annotated_assign() {
+    let stream = Lexer::new("a : int\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::AnnAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                annotation: Expression::Name { id: String::from("int"),
+                    ctx: ExprContext::Load },
+                value: None
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("a : int = \"hi\"\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::AnnAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                annotation: Expression::Name { id: String::from("int"),
+                    ctx: ExprContext::Load },
+                value: Some(Expression::Str { s: String::from("hi") })
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn augmented_assign() {
+    let stream = Lexer::new("a += b; a -= b; a *= b; a @= b; a /= b; a %= b; \
+        a &= b; a |= b; a ^= b; a <<= b; a >>= b; a **= b; a //= b\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::Add,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::Sub,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::Mult,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::MatMult,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::Div,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::Mod,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::BitAnd,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::BitOr,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::BitXor,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::LShift,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::RShift,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::Pow,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            },
+            Statement::AugAssign {
+                target: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load },
+                op: Operator::FloorDiv,
+                value: Expression::Name { id: String::from("b"),
+                    ctx: ExprContext::Load },
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
