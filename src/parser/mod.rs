@@ -297,7 +297,73 @@ fn parse_import_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 fn parse_import_from(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
-    unimplemented!()
+    let (opt, level) = parse_import_level(opt, stream);
+
+    let (opt, module) = if util::valid_import_as_name(&util::get_token(&opt)) {
+        let (opt, names) = parse_dotted_name(opt, stream);
+        (opt, Some(names.join(".")))
+    } else {
+        (opt, None)
+    };
+
+    let (opt, names) = match util::get_token(&opt) {
+        Token::Import => {
+            let opt = stream.next();
+
+            match util::get_token(&opt) {
+                Token::Times => (stream.next(), vec![Alias::Alias {
+                    name: String::from("*"), asname: None }]),
+                Token::Lparen => {
+                    let (opt, names) =
+                        parse_import_as_names(stream.next(), stream);
+
+                    match util::get_token(&opt) {
+                        Token::Rparen => (stream.next(), names),
+                        t => panic!("syntax error: expected ')', found {:?}", t)
+                    }
+                },
+                _ => parse_import_as_names(opt, stream)
+            }
+        },
+        t => panic!("syntax error: expected import, found {:?}", t)
+    };
+
+    (opt, Statement::ImportFrom { module, names, level })
+}
+
+pub fn parse_import_level(opt: Option<(usize, ResultToken)>,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, usize) {
+    match util::get_token(&opt) {
+        Token::Dot => {
+            let (opt, level) = parse_import_level(stream.next(), stream);
+            (opt, level + 1)
+        },
+        Token::Ellipsis => {
+            let (opt, level) = parse_import_level(stream.next(), stream);
+            (opt, level + 3)
+        },
+        _ => (opt, 0)
+    }
+}
+
+fn parse_import_as_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Alias) {
+    let (opt, name) = match util::get_token(&opt) {
+        Token::Identifier(s) => (stream.next(), s),
+        t => panic!("syntax error: expeced identifier, found {:?}", t)
+    };
+    let (opt, asname) = match util::get_token(&opt) {
+        Token::As => {
+            let opt = stream.next();
+            match util::get_token(&opt) {
+                Token::Identifier(s) => (stream.next(), Some(s)),
+                t => panic!("syntax error: expeced identifier, found {:?}", t)
+            }
+        },
+        _ => (opt, None)
+    };
+
+    (opt, Alias::Alias { name, asname })
 }
 
 fn parse_dotted_as_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
@@ -316,6 +382,29 @@ fn parse_dotted_as_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             (opt, Alias::Alias { name, asname: Some(asname) })
         },
         _ => (opt, Alias::Alias { name, asname: None })
+    }
+}
+
+// CPython's parser reports an error when a trailing comma appears with no
+// parentheses. ex: "from module import a,b,c," we might want to also error out
+// but I don't see a reason for doing so at this moment in time.
+fn parse_import_as_names(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Alias>) {
+    if util::valid_import_as_name(&util::get_token(&opt)) {
+        let (opt, alias) = parse_import_as_name(opt, stream);
+
+        match util::get_token(&opt) {
+            Token::Comma => {
+                let (opt, mut aliases) =
+                    parse_import_as_names(stream.next(), stream);
+
+                aliases.insert(0, alias);
+                (opt, aliases)
+            },
+            _ => (opt, vec![alias])
+        }
+    } else {
+        (opt, vec![])
     }
 }
 

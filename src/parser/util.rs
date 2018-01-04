@@ -241,6 +241,13 @@ pub fn valid_dict_maker(token: &Token) -> bool {
     }
 }
 
+pub fn valid_import_as_name(token: &Token) -> bool {
+    match *token {
+        Token::Identifier(_) => true,
+        _ => false
+    }
+}
+
 /* Utility Types */
 #[derive(Debug, PartialEq)]
 pub enum ArgType {

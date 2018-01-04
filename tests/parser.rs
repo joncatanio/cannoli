@@ -1124,3 +1124,82 @@ fn assert() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn import() {
+    let stream = Lexer::new("import mod\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Import {
+                names: vec![
+                    Alias::Alias { name: String::from("mod"), asname: None }
+                ]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("import mod1.a.b as m, mod2\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Import {
+                names: vec![
+                    Alias::Alias {
+                        name: String::from("mod1.a.b"),
+                        asname: Some(String::from("m"))
+                    },
+                    Alias::Alias { name: String::from("mod2"), asname: None }
+                ]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn import_from() {
+    let stream = Lexer::new("from mod import *\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::ImportFrom {
+                module: Some(String::from("mod")),
+                names: vec![
+                    Alias::Alias { name: String::from("*"), asname: None }
+                ],
+                level: 0
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("from .... mod import a,b,c as g\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::ImportFrom {
+                module: Some(String::from("mod")),
+                names: vec![
+                    Alias::Alias { name: String::from("a"), asname: None },
+                    Alias::Alias { name: String::from("b"), asname: None },
+                    Alias::Alias {
+                        name: String::from("c"),
+                        asname: Some(String::from("g"))
+                    }
+                ],
+                level: 4
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("from .... mod import (a,b,c as g,)\n");
+    let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+}
