@@ -104,6 +104,25 @@ pub fn valid_simple_stmt(token: &Token) -> bool {
     }
 }
 
+pub fn valid_aug_assign(token: &Token) -> bool {
+    match *token {
+        Token::AssignPlus        => true,
+        Token::AssignMinus       => true,
+        Token::AssignTimes       => true,
+        Token::AssignAt          => true,
+        Token::AssignDivide      => true,
+        Token::AssignMod         => true,
+        Token::AssignBitAnd      => true,
+        Token::AssignBitOr       => true,
+        Token::AssignBitXor      => true,
+        Token::AssignLshift      => true,
+        Token::AssignRshift      => true,
+        Token::AssignExponent    => true,
+        Token::AssignDivideFloor => true,
+        _ => false
+    }
+}
+
 pub fn valid_flow_stmt(token: &Token) -> bool {
     match *token {
         Token::Break    => true,

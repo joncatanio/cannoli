@@ -103,7 +103,71 @@ fn parse_expr_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
     let (opt, expr) = parse_test_list_star_expr(opt, stream);
 
-    (opt, Statement::Expr { value: expr })
+    match util::get_token(&opt) {
+        Token::Colon => {
+            let (opt, annotation, value) =
+                parse_ann_assign(stream.next(), stream);
+
+            (opt, Statement::AnnAssign { target: expr, annotation, value })
+        },
+        Token::Assign => {
+            let (opt, mut targets, value) = parse_assign(stream.next(), stream);
+
+            targets.insert(0, expr);
+            (opt, Statement::Assign { targets, value })
+        },
+        ref token if util::valid_aug_assign(&token) => {
+            let (opt, op) = parse_aug_assign(opt, stream);
+            let (opt, value) = match util::get_token(&opt) {
+                Token::Yield => parse_yield_expr(stream.next(), stream),
+                _ => parse_test_list(opt, stream)
+            };
+
+            (opt, Statement::AugAssign { target: expr, op, value })
+        },
+        _ => (opt, Statement::Expr { value: expr })
+    }
+}
+
+fn parse_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Expression>, Expression) {
+    let (opt, expr) = match util::get_token(&opt) {
+        Token::Yield => parse_yield_expr(stream.next(), stream),
+        _ => parse_test_list_star_expr(opt, stream)
+    };
+
+    match util::get_token(&opt) {
+        Token::Assign => {
+            let (opt, mut targets, value) = parse_assign(stream.next(), stream);
+
+            targets.insert(0, expr);
+            (opt, targets, value)
+        },
+        _ => (opt, vec![], expr)
+    }
+}
+
+fn parse_ann_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression, Option<Expression>) {
+    let token = util::get_token(&opt);
+    if !util::valid_test_expr(&token) {
+        panic!("syntax error: invalid token {:?}", token)
+    }
+
+    let (opt, annotation) = parse_test_expr(opt, stream);
+    match util::get_token(&opt) {
+        Token::Assign => {
+            let opt = stream.next();
+            let token = util::get_token(&opt);
+            if !util::valid_test_expr(&token) {
+                panic!("syntax error: invalid token {:?}", token)
+            }
+
+            let (opt, value) = parse_test_expr(opt, stream);
+            (opt, annotation, Some(value))
+        },
+        _ => (opt, annotation, None)
+    }
 }
 
 fn parse_test_list_star_expr(opt: Option<(usize, ResultToken)>,
@@ -133,6 +197,81 @@ fn parse_test_list_star_expr(opt: Option<(usize, ResultToken)>,
             }
         },
         _ => (opt, expr)
+    }
+}
+
+fn parse_aug_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Operator) {
+    let op = match util::get_token(&opt) {
+        Token::AssignPlus        => Operator::Add,
+        Token::AssignMinus       => Operator::Sub,
+        Token::AssignTimes       => Operator::Mult,
+        Token::AssignAt          => Operator::MatMult,
+        Token::AssignDivide      => Operator::Div,
+        Token::AssignMod         => Operator::Mod,
+        Token::AssignBitAnd      => Operator::BitAnd,
+        Token::AssignBitOr       => Operator::BitOr,
+        Token::AssignBitXor      => Operator::BitXor,
+        Token::AssignLshift      => Operator::LShift,
+        Token::AssignRshift      => Operator::RShift,
+        Token::AssignExponent    => Operator::Pow,
+        Token::AssignDivideFloor => Operator::FloorDiv,
+        t => panic!("parsing error: unexpected token for augassign, {:?}", t)
+    };
+
+    (stream.next(), op)
+}
+
+fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    match util::get_token(&opt) {
+        Token::Break    => (stream.next(), Statement::Break),
+        Token::Continue => (stream.next(), Statement::Continue),
+        Token::Return   => parse_return_stmt(stream.next(), stream),
+        Token::Raise    => parse_raise_stmt(stream.next(), stream),
+        Token::Yield    => parse_yield_stmt(stream.next(), stream),
+        _ => unimplemented!()
+    }
+}
+
+fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let token = util::get_token(&opt);
+
+    if util::valid_test_expr(&token) {
+        let (opt, test_list) = parse_test_list(opt, stream);
+        (opt, Statement::Return { value: Some(test_list) })
+    } else {
+        (opt, Statement::Return { value: None })
+    }
+}
+
+fn parse_yield_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let (opt, value) = parse_yield_expr(opt, stream);
+    (opt, Statement::Expr { value })
+}
+
+fn parse_raise_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    if util::valid_test_expr(&util::get_token(&opt)) {
+        let (opt, exc) = parse_test_expr(opt, stream);
+
+        match util::get_token(&opt) {
+            Token::From => {
+                let opt = stream.next();
+
+                if !util::valid_test_expr(&util::get_token(&opt)) {
+                    panic!("syntax error: expected value after 'from'")
+                }
+
+                let (opt, cause) = parse_test_expr(opt, stream);
+                (opt, Statement::Raise { exc: Some(exc), cause: Some(cause) })
+            },
+            _ => (opt, Statement::Raise { exc: Some(exc), cause: None })
+        }
+    } else {
+        (opt, Statement::Raise { exc: None, cause: None })
     }
 }
 
@@ -183,59 +322,6 @@ fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         }
         token => panic!("expected 'identifier', found '{:?}'", token)
     }
-}
-
-fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
-    match util::get_token(&opt) {
-        Token::Break    => (stream.next(), Statement::Break),
-        Token::Continue => (stream.next(), Statement::Continue),
-        Token::Return   => parse_return_stmt(stream.next(), stream),
-        Token::Raise    => parse_raise_stmt(stream.next(), stream),
-        Token::Yield    => parse_yield_stmt(stream.next(), stream),
-        _ => unimplemented!()
-    }
-}
-
-fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
-    let token = util::get_token(&opt);
-
-    if util::valid_test_expr(&token) {
-        let (opt, test_list) = parse_test_list(opt, stream);
-        (opt, Statement::Return { value: Some(test_list) })
-    } else {
-        (opt, Statement::Return { value: None })
-    }
-}
-
-fn parse_raise_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
-    if util::valid_test_expr(&util::get_token(&opt)) {
-        let (opt, exc) = parse_test_expr(opt, stream);
-
-        match util::get_token(&opt) {
-            Token::From => {
-                let opt = stream.next();
-
-                if !util::valid_test_expr(&util::get_token(&opt)) {
-                    panic!("syntax error: expected value after 'from'")
-                }
-
-                let (opt, cause) = parse_test_expr(opt, stream);
-                (opt, Statement::Raise { exc: Some(exc), cause: Some(cause) })
-            },
-            _ => (opt, Statement::Raise { exc: Some(exc), cause: None })
-        }
-    } else {
-        (opt, Statement::Raise { exc: None, cause: None })
-    }
-}
-
-fn parse_yield_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
-    let (opt, value) = parse_yield_expr(opt, stream);
-    (opt, Statement::Expr { value })
 }
 
 fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
