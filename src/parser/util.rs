@@ -99,6 +99,8 @@ pub fn valid_simple_stmt(token: &Token) -> bool {
         Token::Global   => true,
         Token::Nonlocal => true,
         Token::Assert   => true,
+        Token::Import   => true,
+        Token::From     => true,
         _ if valid_flow_stmt(token) => true,
         _ => valid_test_expr(token)
     }

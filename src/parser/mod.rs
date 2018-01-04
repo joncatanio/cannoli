@@ -87,14 +87,16 @@ fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
 fn parse_small_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
     match util::get_token(&opt) {
-        Token::Pass => (stream.next(), Statement::Pass),
-        Token::Global => parse_global_stmt(stream.next(), stream),
+        Token::Pass     => (stream.next(), Statement::Pass),
+        Token::Global   => parse_global_stmt(stream.next(), stream),
         Token::Nonlocal => parse_nonlocal_stmt(stream.next(), stream),
+        Token::Del      => parse_del_stmt(stream.next(), stream),
+        Token::Assert   => parse_assert_stmt(stream.next(), stream),
+        Token::Import   => parse_import_name(stream.next(), stream),
+        Token::From     => parse_import_from(stream.next(), stream),
         ref token if util::valid_flow_stmt(&token) => {
             parse_flow_stmt(opt, stream)
         },
-        Token::Del => parse_del_stmt(stream.next(), stream),
-        Token::Assert => parse_assert_stmt(stream.next(), stream),
         _ => parse_expr_stmt(opt, stream)
     }
 }
@@ -284,6 +286,71 @@ fn parse_raise_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         }
     } else {
         (opt, Statement::Raise { exc: None, cause: None })
+    }
+}
+
+fn parse_import_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let (opt, names) = parse_dotted_as_names(opt, stream);
+    (opt, Statement::Import { names })
+}
+
+fn parse_import_from(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    unimplemented!()
+}
+
+fn parse_dotted_as_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Alias) {
+    let (opt, names) = parse_dotted_name(opt, stream);
+    let name = names.join(".");
+
+    match util::get_token(&opt) {
+        Token::As => {
+            let opt = stream.next();
+            let (opt, asname) = match util::get_token(&opt) {
+                Token::Identifier(s) => (stream.next(), s),
+                t => panic!("syntax error: expected identifer, found {:?}", t)
+            };
+
+            (opt, Alias::Alias { name, asname: Some(asname) })
+        },
+        _ => (opt, Alias::Alias { name, asname: None })
+    }
+}
+
+fn parse_dotted_as_names(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Alias>) {
+    let (opt, alias) = parse_dotted_as_name(opt, stream);
+
+    match util::get_token(&opt) {
+        Token::Comma => {
+            let (opt, mut names) = parse_dotted_as_names(stream.next(), stream);
+
+            names.insert(0, alias);
+            (opt, names)
+        },
+        _ => (opt, vec![alias])
+    }
+}
+
+// Returns a vec of strings, which can be joined with a '.', this is to
+// anticipate any changes to parsing.
+fn parse_dotted_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<String>) {
+    let (opt, name) = match util::get_token(&opt) {
+        Token::Identifier(s) => (stream.next(), s),
+        t => panic!("syntax error: expected identifier, found {:?}", t)
+    };
+
+    match util::get_token(&opt) {
+        Token::Dot => {
+            let (opt, mut names) = parse_dotted_name(stream.next(), stream);
+
+            names.insert(0, name);
+            (opt, names)
+        },
+        _ => (opt, vec![name])
     }
 }
 

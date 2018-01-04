@@ -15,6 +15,8 @@ pub enum Statement {
         value: Option<Expression> },
     Raise { exc: Option<Expression>, cause: Option<Expression> },
     Assert { test: Expression, msg: Option<Expression> },
+    Import { names: Vec<Alias> },
+    ImportFrom { module: Option<String>, names: Vec<Alias>, level: usize },
     Global { names: Vec<String> },
     Nonlocal { names: Vec<String> },
     Expr { value: Expression },
@@ -129,6 +131,11 @@ pub enum Comprehension {
 #[derive(Debug, PartialEq)]
 pub enum Keyword {
     Keyword { arg: Option<String>, value: Expression }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Alias {
+    Alias { name: String, asname: Option<String> }
 }
 
 #[derive(Debug, PartialEq)]
