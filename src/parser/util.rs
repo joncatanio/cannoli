@@ -5,7 +5,7 @@ use super::ast::*;
 /* Helper functions */
 pub fn get_token(opt: &Option<(usize, ResultToken)>) -> Token {
     if opt.is_none() {
-        panic!("expected <Token>, found 'None'");
+        panic!("syntax error: unexpected EOF");
     }
     let (_, result_token) = opt.clone().unwrap();
     result_token.clone().unwrap()
@@ -92,6 +92,14 @@ pub fn get_factor_op(opt: &Option<(usize, ResultToken)>)
 
 /* Token validation functions to determine if a starting token is found for
  * a given rule. */
+pub fn valid_stmt(token: &Token) -> bool {
+    match *token {
+        _ if valid_simple_stmt(token)   => true,
+        _ if valid_compound_stmt(token) => true,
+        _ => false
+    }
+}
+
 pub fn valid_simple_stmt(token: &Token) -> bool {
     match *token {
         Token::Del      => true,
@@ -103,6 +111,20 @@ pub fn valid_simple_stmt(token: &Token) -> bool {
         Token::From     => true,
         _ if valid_flow_stmt(token) => true,
         _ => valid_test_expr(token)
+    }
+}
+
+pub fn valid_compound_stmt(token: &Token) -> bool {
+    match *token {
+        Token::If    => true,
+        Token::While => true,
+        Token::For   => true,
+        Token::Try   => true,
+        Token::With  => true,
+        Token::Def   => true,
+        Token::Class => true,
+        Token::At    => true,
+        _ => false
     }
 }
 

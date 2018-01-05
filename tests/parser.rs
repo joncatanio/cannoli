@@ -79,15 +79,19 @@ fn or_and_test_expr() {
                     Expression::BoolOp {
                         op: BoolOperator::And,
                         values: vec![
-                            Expression::NameConstant { value: Singleton::False },
-                            Expression::NameConstant { value: Singleton::False },
+                            Expression::NameConstant {
+                                value: Singleton::False },
+                            Expression::NameConstant {
+                                value: Singleton::False },
                         ]
                     },
                     Expression::BoolOp {
                         op: BoolOperator::And,
                         values: vec![
-                            Expression::NameConstant { value: Singleton::True},
-                            Expression::NameConstant { value: Singleton::False },
+                            Expression::NameConstant {
+                                value: Singleton::True},
+                            Expression::NameConstant {
+                                value: Singleton::False },
                         ]
                     }
                 ]
@@ -1201,5 +1205,93 @@ fn import_from() {
 
     let stream = Lexer::new("from .... mod import (a,b,c as g,)\n");
     let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn if_statement() {
+    let stream = Lexer::new("if a:\n   x;y;z\n   x = 1\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::If {
+                test: Expression::Name {
+                    id: String::from("a"), ctx: ExprContext::Load },
+                body: vec![
+                    Statement::Expr { value: Expression::Name {
+                        id: String::from("x"), ctx: ExprContext::Load
+                    }},
+                    Statement::Expr { value: Expression::Name {
+                        id: String::from("y"), ctx: ExprContext::Load
+                    }},
+                    Statement::Expr { value: Expression::Name {
+                        id: String::from("z"), ctx: ExprContext::Load
+                    }},
+                    Statement::Assign {
+                        targets: vec![
+                            Expression::Name {
+                                id: String::from("x"), ctx: ExprContext::Load }
+                        ],
+                        value: Expression::Num {
+                            n: Number::DecInteger(String::from("1")) }
+                    }
+                ],
+                orelse: vec![]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("if a:\n   x;y;z\n   x = 1\nelif b:\n   func()\n\
+        else:\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::If {
+                test: Expression::Name {
+                    id: String::from("a"), ctx: ExprContext::Load },
+                body: vec![
+                    Statement::Expr { value: Expression::Name {
+                        id: String::from("x"), ctx: ExprContext::Load
+                    }},
+                    Statement::Expr { value: Expression::Name {
+                        id: String::from("y"), ctx: ExprContext::Load
+                    }},
+                    Statement::Expr { value: Expression::Name {
+                        id: String::from("z"), ctx: ExprContext::Load
+                    }},
+                    Statement::Assign {
+                        targets: vec![
+                            Expression::Name {
+                                id: String::from("x"), ctx: ExprContext::Load }
+                        ],
+                        value: Expression::Num {
+                            n: Number::DecInteger(String::from("1")) }
+                    }
+                ],
+                orelse: vec![
+                    Statement::If {
+                        test: Expression::Name {
+                            id: String::from("b"), ctx: ExprContext::Load },
+                        body: vec![
+                            Statement::Expr {
+                                value: Expression::Call {
+                                    func: Box::new(Expression::Name {
+                                        id: String::from("func"),
+                                        ctx: ExprContext::Load
+                                    }),
+                                    args: vec![],
+                                    keywords: vec![]
+                                }
+                            }
+                        ],
+                        orelse: vec![Statement::Pass]
+                    }
+                ]
+            }
+        ]
+    };
     assert_eq!(ast, expected);
 }

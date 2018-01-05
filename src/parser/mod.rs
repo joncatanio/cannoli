@@ -41,20 +41,35 @@ fn parse_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     if util::valid_simple_stmt(&token) {
         parse_simple_stmt(opt, &mut stream)
     } else {
-        /*
         let (opt, stmt) = parse_compound_stmt(opt, &mut stream);
         (opt, vec![stmt])
-        */
-        unimplemented!()
     }
 }
 
-/*
+// Both `parse_stmt` & `parse_stmts` return Vec structs, but `parse_stmts` calls
+// `parse_stmt` recursively. If a compound_stmt is encountered then the Vec will
+// be of size 1. Extending the Vec is a simple implementation of otherwise more
+// complex logic.
+fn parse_stmts(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Statement>) {
+    if util::valid_stmt(&util::get_token(&opt)) {
+        let (opt, mut stmt_vec) = parse_stmt(opt, stream);
+        let (opt, stmts_vec) = parse_stmts(opt, stream);
+
+        stmt_vec.extend(stmts_vec);
+        (opt, stmt_vec)
+    } else {
+        (opt, vec![])
+    }
+}
+
 fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
-    unimplemented!()
+    match util::get_token(&opt) {
+        Token::If => parse_if_stmt(stream.next(), stream),
+        _ => unimplemented!()
+    }
 }
-*/
 
 fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Statement>) {
@@ -511,6 +526,85 @@ fn parse_assert_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             (opt, Statement::Assert { test, msg: Some(msg) })
         },
         _ => (opt, Statement::Assert { test, msg: None })
+    }
+}
+
+fn parse_if_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let token = util::get_token(&opt);
+    let (opt, test) = if util::valid_test_expr(&token) {
+        parse_test_expr(opt, stream)
+    } else {
+        panic!("syntax error: invalid guard, found {:?}", token)
+    };
+
+    match util::get_token(&opt) {
+        Token::Colon => {
+            let (opt, body) = parse_suite(stream.next(), stream);
+
+            // `compound_stmt` doesn't rely on an ending Newline token, we must
+            // now check for EOF in some circumstance.
+            if opt.is_none() {
+                (opt, Statement::If { test, body, orelse: vec![] })
+            } else {
+                match util::get_token(&opt) {
+                    Token::Elif => {
+                        let (opt, stmt) = parse_if_stmt(stream.next(), stream);
+                        (opt, Statement::If { test, body, orelse: vec![stmt] })
+                    },
+                    Token::Else => {
+                        let opt = stream.next();
+
+                        match util::get_token(&opt) {
+                            Token::Colon => {
+                                let (opt, orelse) =
+                                    parse_suite(stream.next(), stream);
+                                (opt, Statement::If { test, body, orelse })
+                            },
+                            t => panic!("syntax error: expected ':', \
+                                found {:?}", t)
+                        }
+                    },
+                    _ => (opt, Statement::If { test, body, orelse: vec![] })
+                }
+            }
+        },
+        t => panic!("syntax error: expected ':', found {:?}", t)
+    }
+}
+
+fn parse_suite(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Statement>) {
+    match util::get_token(&opt) {
+        Token::Newline => {
+            let opt = stream.next();
+
+            match util::get_token(&opt) {
+                Token::Indent => {
+                    let opt = stream.next();
+
+                    if util::valid_stmt(&util::get_token(&opt)) {
+                        let (opt, stmts) = parse_stmts(opt, stream);
+
+                        match util::get_token(&opt) {
+                            Token::Dedent => (stream.next(), stmts),
+                            _ => panic!("indentation error: expeced dedent")
+                        }
+                    } else {
+                        panic!("syntax error: expected statement in block")
+                    }
+                },
+                _ => panic!("indentation error: expected indented block")
+            }
+        },
+        token => {
+            if util::valid_simple_stmt(&token) {
+                let (opt, stmts) = parse_simple_stmt(opt, stream);
+                (opt, stmts)
+            } else {
+                panic!("syntax error: invalid suite, found {:?}", token)
+            }
+        }
     }
 }
 
