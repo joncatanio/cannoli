@@ -13,6 +13,7 @@ pub enum Statement {
     AugAssign { target: Expression, op: Operator, value: Expression },
     AnnAssign { target: Expression, annotation: Expression,
         value: Option<Expression> },
+    While { test: Expression, body: Vec<Statement>, orelse: Vec<Statement> },
     If { test: Expression, body: Vec<Statement>, orelse: Vec<Statement> },
     Raise { exc: Option<Expression>, cause: Option<Expression> },
     Assert { test: Expression, msg: Option<Expression> },

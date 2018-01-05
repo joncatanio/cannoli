@@ -1295,3 +1295,34 @@ fn if_statement() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn while_statement() {
+    let stream = Lexer::new("while True:\n   continue\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::While {
+                test: Expression::NameConstant { value: Singleton::True },
+                body: vec![Statement::Continue],
+                orelse: vec![]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("while True:\n   continue\nelse:\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::While {
+                test: Expression::NameConstant { value: Singleton::True },
+                body: vec![Statement::Continue],
+                orelse: vec![Statement::Pass]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}

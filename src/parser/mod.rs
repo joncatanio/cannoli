@@ -66,7 +66,8 @@ fn parse_stmts(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
     match util::get_token(&opt) {
-        Token::If => parse_if_stmt(stream.next(), stream),
+        Token::If    => parse_if_stmt(stream.next(), stream),
+        Token::While => parse_while_stmt(stream.next(), stream),
         _ => unimplemented!()
     }
 }
@@ -566,6 +567,44 @@ fn parse_if_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                         }
                     },
                     _ => (opt, Statement::If { test, body, orelse: vec![] })
+                }
+            }
+        },
+        t => panic!("syntax error: expected ':', found {:?}", t)
+    }
+}
+
+fn parse_while_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let token = util::get_token(&opt);
+    let (opt, test) = if util::valid_test_expr(&token) {
+        parse_test_expr(opt, stream)
+    } else {
+        panic!("syntax error: invalid guard, found {:?}", token)
+    };
+
+    match util::get_token(&opt) {
+        Token::Colon => {
+            let (opt, body) = parse_suite(stream.next(), stream);
+
+            if opt.is_none() {
+                (opt, Statement::While { test, body, orelse: vec![] })
+            } else {
+                match util::get_token(&opt) {
+                    Token::Else => {
+                        let opt = stream.next();
+
+                        match util::get_token(&opt) {
+                            Token::Colon => {
+                                let (opt, orelse) =
+                                    parse_suite(stream.next(), stream);
+                                (opt, Statement::While { test, body, orelse })
+                            },
+                            t => panic!("syntax error: expected ':', \
+                                found {:?}", t)
+                        }
+                    },
+                    _ => (opt, Statement::While { test, body, orelse: vec![] })
                 }
             }
         },
