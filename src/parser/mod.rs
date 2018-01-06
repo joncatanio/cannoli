@@ -541,39 +541,33 @@ fn parse_if_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     } else {
         panic!("syntax error: invalid guard, found {:?}", token)
     };
-
-    match util::get_token(&opt) {
-        Token::Colon => {
-            let (opt, body) = parse_suite(stream.next(), stream);
-
-            // `compound_stmt` doesn't rely on an ending Newline token, we must
-            // now check for EOF in some circumstance.
-            if opt.is_none() {
-                (opt, Statement::If { test, body, orelse: vec![] })
-            } else {
-                match util::get_token(&opt) {
-                    Token::Elif => {
-                        let (opt, stmt) = parse_if_stmt(stream.next(), stream);
-                        (opt, Statement::If { test, body, orelse: vec![stmt] })
-                    },
-                    Token::Else => {
-                        let opt = stream.next();
-
-                        match util::get_token(&opt) {
-                            Token::Colon => {
-                                let (opt, orelse) =
-                                    parse_suite(stream.next(), stream);
-                                (opt, Statement::If { test, body, orelse })
-                            },
-                            t => panic!("syntax error: expected ':', \
-                                found {:?}", t)
-                        }
-                    },
-                    _ => (opt, Statement::If { test, body, orelse: vec![] })
-                }
-            }
-        },
+    let opt = match util::get_token(&opt) {
+        Token::Colon => stream.next(),
         t => panic!("syntax error: expected ':', found {:?}", t)
+    };
+    let (opt, body) = parse_suite(opt, stream);
+
+    // `compound_stmt` doesn't rely on an ending Newline token, we must
+    // now check for EOF in some circumstance.
+    if opt.is_none() {
+        (opt, Statement::If { test, body, orelse: vec![] })
+    } else {
+        match util::get_token(&opt) {
+            Token::Elif => {
+                let (opt, stmt) = parse_if_stmt(stream.next(), stream);
+                (opt, Statement::If { test, body, orelse: vec![stmt] })
+            },
+            Token::Else => {
+                let opt = match util::get_token(&stream.next()) {
+                    Token::Colon => stream.next(),
+                    t => panic!("syntax error: expected ':', found {:?}", t)
+                };
+
+                let (opt, orelse) = parse_suite(opt, stream);
+                (opt, Statement::If { test, body, orelse })
+            },
+            _ => (opt, Statement::If { test, body, orelse: vec![] })
+        }
     }
 }
 
@@ -585,33 +579,27 @@ fn parse_while_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     } else {
         panic!("syntax error: invalid guard, found {:?}", token)
     };
-
-    match util::get_token(&opt) {
-        Token::Colon => {
-            let (opt, body) = parse_suite(stream.next(), stream);
-
-            if opt.is_none() {
-                (opt, Statement::While { test, body, orelse: vec![] })
-            } else {
-                match util::get_token(&opt) {
-                    Token::Else => {
-                        let opt = stream.next();
-
-                        match util::get_token(&opt) {
-                            Token::Colon => {
-                                let (opt, orelse) =
-                                    parse_suite(stream.next(), stream);
-                                (opt, Statement::While { test, body, orelse })
-                            },
-                            t => panic!("syntax error: expected ':', \
-                                found {:?}", t)
-                        }
-                    },
-                    _ => (opt, Statement::While { test, body, orelse: vec![] })
-                }
-            }
-        },
+    let opt = match util::get_token(&opt) {
+        Token::Colon => stream.next(),
         t => panic!("syntax error: expected ':', found {:?}", t)
+    };
+    let (opt, body) = parse_suite(opt, stream);
+
+    if opt.is_none() {
+        (opt, Statement::While { test, body, orelse: vec![] })
+    } else {
+        match util::get_token(&opt) {
+            Token::Else => {
+                let opt = match util::get_token(&stream.next()) {
+                    Token::Colon => stream.next(),
+                    t => panic!("syntax error: expected ':', found {:?}", t)
+                };
+                let (opt, orelse) = parse_suite(opt, stream);
+
+                (opt, Statement::While { test, body, orelse })
+            },
+            _ => (opt, Statement::While { test, body, orelse: vec![] })
+        }
     }
 }
 
@@ -624,43 +612,34 @@ fn parse_for_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Expression::Tuple { elts: expr_list, ctx: ExprContext::Store }
     };
 
-    match util::get_token(&opt) {
-        Token::In => {
-            let (opt, iter) = parse_test_list(stream.next(), stream);
-
-            match util::get_token(&opt) {
-                Token::Colon => {
-                    let (opt, body) = parse_suite(stream.next(), stream);
-
-                    if opt.is_none() {
-                        (opt, Statement::For {
-                            target, iter, body, orelse: vec![] })
-                    } else {
-                        match util::get_token(&opt) {
-                            Token::Else => {
-                                let opt = stream.next();
-
-                                match util::get_token(&opt) {
-                                    Token::Colon => {
-                                        let (opt, orelse) =
-                                            parse_suite(stream.next(), stream);
-
-                                        (opt, Statement::For {
-                                            target, iter, body, orelse })
-                                    },
-                                    t => panic!("syntax error: expected ':', \
-                                        found {:?}", t)
-                                }
-                            },
-                            _ => (opt, Statement::For {
-                                target, iter, body, orelse: vec![] })
-                        }
-                    }
-                },
-                t => panic!("syntax error: expected ':', found {:?}", t)
-            }
-        },
+    let opt = match util::get_token(&opt) {
+        Token::In => stream.next(),
         t => panic!("syntax error: expected 'in', found {:?}", t)
+    };
+    let (opt, iter) = parse_test_list(opt, stream);
+
+    let opt = match util::get_token(&opt) {
+        Token::Colon => stream.next(),
+        t => panic!("syntax error: expected ':', found {:?}", t)
+    };
+    let (opt, body) = parse_suite(opt, stream);
+
+    if opt.is_none() {
+        (opt, Statement::For {
+            target, iter, body, orelse: vec![] })
+    } else {
+        match util::get_token(&opt) {
+            Token::Else => {
+                let opt = match util::get_token(&stream.next()) {
+                    Token::Colon => stream.next(),
+                    t => panic!("syntax error: expected ':', found {:?}", t)
+                };
+                let (opt, orelse) = parse_suite(opt, stream);
+
+                (opt, Statement::For { target, iter, body, orelse })
+            },
+            _ => (opt, Statement::For { target, iter, body, orelse: vec![] })
+        }
     }
 }
 
@@ -782,14 +761,13 @@ fn parse_with_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         panic!("syntax error: invalid syntax")
     }
 
-    match util::get_token(&opt) {
-        Token::Colon => {
-            let (opt, body) = parse_suite(stream.next(), stream);
+    let opt = match util::get_token(&opt) {
+        Token::Colon => stream.next(),
+        t => panic!("syntax error: expected ':', found {:?}", t)
+    };
+    let (opt, body) = parse_suite(opt, stream);
 
-            (opt, Statement::With { items, body })
-        },
-        _ => panic!("syntax error: invalid syntax")
-    }
+    (opt, Statement::With { items, body })
 }
 
 fn parse_with_items(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
@@ -1578,24 +1556,19 @@ fn rec_parse_dict_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             },
             _ => {
                 let (opt, key) = parse_test_expr(opt, stream);
+                let opt = match util::get_token(&opt) {
+                    Token::Colon => stream.next(),
+                    t => panic!("syntax error: expected ':', found {:?}", t)
+                };
                 let token = util::get_token(&opt);
 
-                match token {
-                    Token::Colon => {
-                        let opt = stream.next();
-                        let token = util::get_token(&opt);
-
-                        if !util::valid_test_expr(&token) {
-                            panic!("syntax error: expected right \
-                                    hand expression in dictionary creation, \
-                                    found {:?}", token)
-                        }
-
-                        let (opt, value) = parse_test_expr(opt, stream);
-                        (opt, key, value)
-                    },
-                    _ => panic!("syntax error: expected ':', found {:?}", token)
+                if !util::valid_test_expr(&token) {
+                    panic!("syntax error: expected right hand expression in \
+                        dictionary creation, found {:?}", token)
                 }
+
+                let (opt, value) = parse_test_expr(opt, stream);
+                (opt, key, value)
             }
         };
 
