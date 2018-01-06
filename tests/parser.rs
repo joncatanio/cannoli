@@ -1326,3 +1326,61 @@ fn while_statement() {
     };
     assert_eq!(ast, expected);
 }
+
+// TODO update with proper context (Store)
+#[test]
+fn for_statment() {
+    let stream = Lexer::new("for x in y:\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::For {
+                // TODO ctx should be a Store
+                target: Expression::Name { id: String::from("x"),
+                    ctx: ExprContext::Load },
+                iter: Expression::Name { id: String::from("y"),
+                    ctx: ExprContext::Load },
+                body: vec![Statement::Pass],
+                orelse: vec![]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("for x,y in a,b:\n   pass\nelse:\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::For {
+                target: Expression::Tuple {
+                    elts: vec![
+                        // TODO ctx's should be a Store
+                        Expression::Name { id: String::from("x"),
+                            ctx: ExprContext::Load },
+                        Expression::Name { id: String::from("y"),
+                            ctx: ExprContext::Load },
+                    ],
+                    ctx: ExprContext::Store
+                },
+                iter: Expression::Tuple {
+                    elts: vec![
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                        Expression::Name { id: String::from("b"),
+                            ctx: ExprContext::Load },
+                    ],
+                    ctx: ExprContext::Load
+                },
+                body: vec![Statement::Pass],
+                orelse: vec![Statement::Pass]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("for x,y, in a,b,:\n   pass\nelse:\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+}

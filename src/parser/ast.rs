@@ -1,4 +1,5 @@
 // Abstract Syntax Tree definitions
+// TODO implement trait or something to add line/col num & other meta info
 
 #[derive(Debug, PartialEq)]
 pub enum Ast {
@@ -13,6 +14,8 @@ pub enum Statement {
     AugAssign { target: Expression, op: Operator, value: Expression },
     AnnAssign { target: Expression, annotation: Expression,
         value: Option<Expression> },
+    For { target: Expression, iter: Expression, body: Vec<Statement>,
+        orelse: Vec<Statement> },
     While { test: Expression, body: Vec<Statement>, orelse: Vec<Statement> },
     If { test: Expression, body: Vec<Statement>, orelse: Vec<Statement> },
     Raise { exc: Option<Expression>, cause: Option<Expression> },

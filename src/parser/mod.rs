@@ -68,6 +68,7 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     match util::get_token(&opt) {
         Token::If    => parse_if_stmt(stream.next(), stream),
         Token::While => parse_while_stmt(stream.next(), stream),
+        Token::For   => parse_for_stmt(stream.next(), stream),
         _ => unimplemented!()
     }
 }
@@ -609,6 +610,55 @@ fn parse_while_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             }
         },
         t => panic!("syntax error: expected ':', found {:?}", t)
+    }
+}
+
+fn parse_for_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let (opt, mut expr_list) = parse_expr_list(opt, stream);
+    let target = if expr_list.len() == 1 {
+        expr_list.pop().unwrap()
+    } else {
+        Expression::Tuple { elts: expr_list, ctx: ExprContext::Store }
+    };
+
+    match util::get_token(&opt) {
+        Token::In => {
+            let (opt, iter) = parse_test_list(stream.next(), stream);
+
+            match util::get_token(&opt) {
+                Token::Colon => {
+                    let (opt, body) = parse_suite(stream.next(), stream);
+
+                    if opt.is_none() {
+                        (opt, Statement::For {
+                            target, iter, body, orelse: vec![] })
+                    } else {
+                        match util::get_token(&opt) {
+                            Token::Else => {
+                                let opt = stream.next();
+
+                                match util::get_token(&opt) {
+                                    Token::Colon => {
+                                        let (opt, orelse) =
+                                            parse_suite(stream.next(), stream);
+
+                                        (opt, Statement::For {
+                                            target, iter, body, orelse })
+                                    },
+                                    t => panic!("syntax error: expected ':', \
+                                        found {:?}", t)
+                                }
+                            },
+                            _ => (opt, Statement::For {
+                                target, iter, body, orelse: vec![] })
+                        }
+                    }
+                },
+                t => panic!("syntax error: expected ':', found {:?}", t)
+            }
+        },
+        t => panic!("syntax error: expected 'in', found {:?}", t)
     }
 }
 
