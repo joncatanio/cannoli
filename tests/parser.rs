@@ -1437,3 +1437,90 @@ fn with_statment() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn try_statment() {
+    let stream = Lexer::new("try:\n   x\nfinally:\n   fin\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Try {
+                body: vec![
+                    Statement::Expr {
+                        value: Expression::Name { id: String::from("x"),
+                            ctx: ExprContext::Load }
+                    }
+                ],
+                handlers: vec![],
+                orelse: vec![],
+                finalbody: vec![
+                    Statement::Expr {
+                        value: Expression::Name { id: String::from("fin"),
+                            ctx: ExprContext::Load }
+                    }
+                ]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("try:\n   x\nexcept Error as e:\n   y\n\
+        except NewError as e:\n   z\nelse:\n   pass\nfinally:\n   fin\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Try {
+                body: vec![
+                    Statement::Expr {
+                        value: Expression::Name { id: String::from("x"),
+                            ctx: ExprContext::Load }
+                    }
+                ],
+                handlers: vec![
+                    ExceptHandler::ExceptHandler {
+                        etype: Some(Expression::Name {
+                            id: String::from("Error"),
+                            ctx: ExprContext::Load
+                        }),
+                        name: Some(String::from("e")),
+                        body: vec![
+                            Statement::Expr {
+                                value: Expression::Name {
+                                    id: String::from("y"),
+                                    ctx: ExprContext::Load
+                                }
+                            }
+                        ]
+                    },
+                    ExceptHandler::ExceptHandler {
+                        etype: Some(Expression::Name {
+                            id: String::from("NewError"),
+                            ctx: ExprContext::Load
+                        }),
+                        name: Some(String::from("e")),
+                        body: vec![
+                            Statement::Expr {
+                                value: Expression::Name {
+                                    id: String::from("z"),
+                                    ctx: ExprContext::Load
+                                }
+                            }
+                        ]
+                    }
+                ],
+                orelse: vec![
+                    Statement::Pass
+                ],
+                finalbody: vec![
+                    Statement::Expr {
+                        value: Expression::Name { id: String::from("fin"),
+                            ctx: ExprContext::Load }
+                    }
+                ]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
