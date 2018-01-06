@@ -69,6 +69,7 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::If    => parse_if_stmt(stream.next(), stream),
         Token::While => parse_while_stmt(stream.next(), stream),
         Token::For   => parse_for_stmt(stream.next(), stream),
+        Token::With  => parse_with_stmt(stream.next(), stream),
         _ => unimplemented!()
     }
 }
@@ -659,6 +660,56 @@ fn parse_for_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             }
         },
         t => panic!("syntax error: expected 'in', found {:?}", t)
+    }
+}
+
+fn parse_with_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let (opt, items) = parse_with_items(opt, stream);
+
+    if items.is_empty() {
+        panic!("syntax error: invalid syntax")
+    }
+
+    match util::get_token(&opt) {
+        Token::Colon => {
+            let (opt, body) = parse_suite(stream.next(), stream);
+
+            (opt, Statement::With { items, body })
+        },
+        _ => panic!("syntax error: invalid syntax")
+    }
+}
+
+fn parse_with_items(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<WithItem>) {
+    if util::valid_test_expr(&util::get_token(&opt)) {
+        let (opt, item) = parse_with_item(opt, stream);
+
+        match util::get_token(&opt) {
+            Token::Comma => {
+                let (opt, mut items) = parse_with_items(stream.next(), stream);
+
+                items.insert(0, item);
+                (opt, items)
+            },
+            _ => (opt, vec![item])
+        }
+    } else {
+        (opt, vec![])
+    }
+}
+
+fn parse_with_item(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, WithItem) {
+    let (opt, context_expr) = parse_test_expr(opt, stream);
+
+    match util::get_token(&opt) {
+        Token::As => {
+            let (opt, expr) = parse_expr(stream.next(), stream);
+            (opt, WithItem::WithItem {context_expr, optional_vars: Some(expr)})
+        },
+        _ => (opt, WithItem::WithItem { context_expr, optional_vars: None })
     }
 }
 

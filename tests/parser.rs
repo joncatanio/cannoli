@@ -1384,3 +1384,56 @@ fn for_statment() {
     let ast = parser::parse_start_symbol(stream);
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn with_statment() {
+    let stream = Lexer::new("with a:\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::With {
+                items: vec![
+                    WithItem::WithItem {
+                        context_expr: Expression::Name {
+                            id: String::from("a"), ctx: ExprContext::Load },
+                        optional_vars: None
+                    }
+                ],
+                body: vec![Statement::Pass]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("with a as x, b, c as z:\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::With {
+                items: vec![
+                    WithItem::WithItem {
+                        context_expr: Expression::Name {
+                            id: String::from("a"), ctx: ExprContext::Load },
+                        optional_vars: Some(Expression::Name {
+                            id: String::from("x"), ctx: ExprContext::Load })
+                    },
+                    WithItem::WithItem {
+                        context_expr: Expression::Name {
+                            id: String::from("b"), ctx: ExprContext::Load },
+                        optional_vars: None
+                    },
+                    WithItem::WithItem {
+                        context_expr: Expression::Name {
+                            id: String::from("c"), ctx: ExprContext::Load },
+                        optional_vars: Some(Expression::Name {
+                            id: String::from("z"), ctx: ExprContext::Load })
+                    }
+                ],
+                body: vec![Statement::Pass]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}

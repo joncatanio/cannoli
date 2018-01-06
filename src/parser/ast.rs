@@ -18,6 +18,7 @@ pub enum Statement {
         orelse: Vec<Statement> },
     While { test: Expression, body: Vec<Statement>, orelse: Vec<Statement> },
     If { test: Expression, body: Vec<Statement>, orelse: Vec<Statement> },
+    With { items: Vec<WithItem>, body: Vec<Statement> },
     Raise { exc: Option<Expression>, cause: Option<Expression> },
     Assert { test: Expression, msg: Option<Expression> },
     Import { names: Vec<Alias> },
@@ -141,6 +142,11 @@ pub enum Keyword {
 #[derive(Debug, PartialEq)]
 pub enum Alias {
     Alias { name: String, asname: Option<String> }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum WithItem {
+    WithItem { context_expr: Expression, optional_vars: Option<Expression> }
 }
 
 #[derive(Debug, PartialEq)]
