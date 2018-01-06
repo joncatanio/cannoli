@@ -69,6 +69,7 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::If    => parse_if_stmt(stream.next(), stream),
         Token::While => parse_while_stmt(stream.next(), stream),
         Token::For   => parse_for_stmt(stream.next(), stream),
+        Token::Try   => parse_try_stmt(stream.next(), stream),
         Token::With  => parse_with_stmt(stream.next(), stream),
         _ => unimplemented!()
     }
@@ -660,6 +661,116 @@ fn parse_for_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             }
         },
         t => panic!("syntax error: expected 'in', found {:?}", t)
+    }
+}
+
+fn parse_try_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let opt = match util::get_token(&opt) {
+        Token::Colon => stream.next(),
+        t => panic!("syntax error: expected ':', found {:?}", t)
+    };
+    let (opt, body) = parse_suite(opt, stream);
+
+    match util::get_token(&opt) {
+        Token::Except => {
+            let (opt, handlers) = parse_except_clauses(opt, stream);
+            let (opt, orelse) = if opt.is_none() {
+                (opt, vec![])
+            } else {
+                match util::get_token(&opt) {
+                    Token::Else => {
+                        let opt = match util::get_token(&stream.next()) {
+                            Token::Colon => stream.next(),
+                            t => panic!("syntax error: expected ':', \
+                                found {:?}", t)
+                        };
+
+                        parse_suite(opt, stream)
+                    },
+                    _ => (opt, vec![])
+                }
+            };
+            let (opt, finalbody) = if opt.is_none() {
+                (opt, vec![])
+            } else {
+                match util::get_token(&opt) {
+                    Token::Finally => {
+                        let opt = match util::get_token(&stream.next()) {
+                            Token::Colon => stream.next(),
+                            t => panic!("syntax error: expected ':', \
+                                found {:?}", t)
+                        };
+
+                        parse_suite(opt, stream)
+                    },
+                    _ => (opt, vec![])
+                }
+            };
+
+            (opt, Statement::Try { body, handlers, orelse, finalbody })
+        },
+        Token::Finally => {
+            let opt = match util::get_token(&stream.next()) {
+                Token::Colon => stream.next(),
+                t => panic!("syntax error: expected ':', found {:?}", t)
+            };
+            let (opt, finalbody) = parse_suite(opt, stream);
+
+            (opt, Statement::Try { body, handlers: vec![],
+                orelse: vec![], finalbody })
+        },
+        _ => panic!("syntax error: invalid syntax")
+    }
+}
+
+// The compiler can enforce the default exception being last
+fn parse_except_clauses(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<ExceptHandler>) {
+    match util::get_token(&opt) {
+        Token::Except => {
+            let (opt, etype, name) = parse_except_clause(stream.next(), stream);
+            let opt = match util::get_token(&opt) {
+                Token::Colon => stream.next(),
+                t => panic!("syntax error: expected ':', found {:?}", t)
+            };
+
+            let (opt, body) = parse_suite(opt, stream);
+            let handler = ExceptHandler::ExceptHandler { etype, name, body };
+
+            if opt.is_none() {
+                (opt, vec![handler])
+            } else {
+                let (opt, mut handlers) =
+                    parse_except_clauses(opt, stream);
+
+                handlers.insert(0, handler);
+                (opt, handlers)
+            }
+        },
+        _ => (opt, vec![])
+    }
+}
+
+fn parse_except_clause(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Option<Expression>, Option<String>) {
+    if util::valid_test_expr(&util::get_token(&opt)) {
+        let (opt, etype) = parse_test_expr(opt, stream);
+
+        match util::get_token(&opt) {
+            Token::As => {
+                let opt = stream.next();
+
+                match util::get_token(&opt) {
+                    Token::Identifier(name) =>
+                        (stream.next(), Some(etype), Some(name)),
+                    t => panic!("syntax error: expected alias, found {:?}", t)
+                }
+            },
+            _ => (opt, Some(etype), None)
+        }
+    } else {
+        (opt, None, None)
     }
 }
 

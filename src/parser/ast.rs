@@ -20,6 +20,8 @@ pub enum Statement {
     If { test: Expression, body: Vec<Statement>, orelse: Vec<Statement> },
     With { items: Vec<WithItem>, body: Vec<Statement> },
     Raise { exc: Option<Expression>, cause: Option<Expression> },
+    Try { body: Vec<Statement>, handlers: Vec<ExceptHandler>,
+        orelse: Vec<Statement>, finalbody: Vec<Statement> },
     Assert { test: Expression, msg: Option<Expression> },
     Import { names: Vec<Alias> },
     ImportFrom { module: Option<String>, names: Vec<Alias>, level: usize },
@@ -132,6 +134,12 @@ pub enum Comprehension {
     // No { ..., int: is_async } in Comprehension definition
     Comprehension { target: Expression, iter: Expression,
         ifs: Vec<Expression> }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ExceptHandler {
+    ExceptHandler { etype: Option<Expression>, name: Option<String>,
+        body: Vec<Statement> }
 }
 
 #[derive(Debug, PartialEq)]
