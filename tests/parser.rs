@@ -1526,7 +1526,7 @@ fn try_statment() {
 }
 
 #[test]
-fn funcdef() {
+fn function_def() {
     let stream = Lexer::new("def func():\n   pass\n");
     let ast = parser::parse_start_symbol(stream);
 
@@ -1705,5 +1705,103 @@ fn funcdef() {
     let stream = Lexer::new("def func(x,z=2,*,a:q,b,c,**kwargs:name,) \
         -> rtn:\n   pass\n");
     let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn lambda_def() {
+    let stream = Lexer::new("lambda x,y: x+y\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Lambda {
+                    args: Box::new(Arguments::Arguments {
+                        args: vec![
+                            Arg::Arg {
+                                arg: String::from("x"),
+                                annotation: None
+                            },
+                            Arg::Arg {
+                                arg: String::from("y"),
+                                annotation: None
+                            }
+                        ],
+                        vararg: None,
+                        kwonlyargs: vec![],
+                        kw_defaults: vec![],
+                        kwarg: None,
+                        defaults: vec![]
+                    }),
+                    body: Box::new(Expression::BinOp {
+                        left: Box::new(Expression::Name {
+                            id: String::from("x"), ctx: ExprContext::Load }),
+                        op: Operator::Add,
+                        right: Box::new(Expression::Name {
+                            id: String::from("y"), ctx: ExprContext::Load })
+                    }),
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    // lambdef_nocond test
+    let stream = Lexer::new("[a for x in y if lambda x,y: x+y]\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::ListComp {
+                    elt: Box::new(
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                    ),
+                    generators: vec![
+                        Comprehension::Comprehension {
+                            target: Expression::Name { id: String::from("x"),
+                                ctx: ExprContext::Load },
+                            iter: Expression::Name { id: String::from("y"),
+                                ctx: ExprContext::Load },
+                            ifs: vec![
+                                Expression::Lambda {
+                                    args: Box::new(Arguments::Arguments {
+                                        args: vec![
+                                            Arg::Arg {
+                                                arg: String::from("x"),
+                                                annotation: None
+                                            },
+                                            Arg::Arg {
+                                                arg: String::from("y"),
+                                                annotation: None
+                                            }
+                                        ],
+                                        vararg: None,
+                                        kwonlyargs: vec![],
+                                        kw_defaults: vec![],
+                                        kwarg: None,
+                                        defaults: vec![]
+                                    }),
+                                    body: Box::new(Expression::BinOp {
+                                        left: Box::new(Expression::Name {
+                                            id: String::from("x"),
+                                            ctx: ExprContext::Load
+                                        }),
+                                        op: Operator::Add,
+                                        right: Box::new(Expression::Name {
+                                            id: String::from("y"),
+                                            ctx: ExprContext::Load
+                                        })
+                                    }),
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    };
     assert_eq!(ast, expected);
 }

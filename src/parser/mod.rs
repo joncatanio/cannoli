@@ -1063,7 +1063,7 @@ fn parse_suite(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     match util::get_token(&opt) {
-        Token::Lambda => unimplemented!(),
+        Token::Lambda => parse_lambda(stream.next(), parse_test_expr, stream),
         _ => {
             let (opt, expr) = parse_or_test(opt, stream);
 
@@ -1097,9 +1097,35 @@ fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 fn parse_test_nocond(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Expression) {
     match util::get_token(&opt) {
-        Token::Lambda => unimplemented!(),
+        Token::Lambda => parse_lambda(stream.next(), parse_test_nocond, stream),
         _ => parse_or_test(opt, stream)
     }
+}
+
+// `parse_lambda` covers both `parse_lambdef` and `parse_lambdef_nocond` rules
+// which only vary by the body expression rule which is passed in as `parse_f`
+fn parse_lambda(opt: Option<(usize, ResultToken)>,
+    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression), stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let arguments = Arguments::Arguments {
+        args: vec![], vararg: None, kwonlyargs: vec![],
+        kw_defaults: vec![], kwarg: None, defaults: vec![]
+    };
+    let (opt, varargslist) = parse_argslist(opt, parse_vfpdef, false,
+        arguments, stream);
+    let opt = match util::get_token(&opt) {
+        Token::Colon => stream.next(),
+        t => panic!("syntax error: expected ':', found {:?}", t)
+    };
+    let (opt, body) = if util::valid_test_expr(&util::get_token(&opt)) {
+        let (opt, expr) = parse_f(opt, stream);
+        (opt, Box::new(expr))
+    } else {
+        panic!("syntax error: invalid syntax")
+    };
+
+    (opt, Expression::Lambda { args: Box::new(varargslist), body })
 }
 
 fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
