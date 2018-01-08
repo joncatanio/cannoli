@@ -1805,3 +1805,44 @@ fn lambda_def() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn class_def() {
+    let stream = Lexer::new("class C(base, key=word, **kwargs):\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::ClassDef {
+                name: String::from("C"),
+                bases: vec![
+                    Expression::Name {
+                        id: String::from("base"),
+                        ctx: ExprContext::Load
+                    }
+                ],
+                keywords: vec![
+                    Keyword::Keyword {
+                        arg: Some(String::from("key")),
+                        value: Expression::Name {
+                            id: String::from("word"),
+                            ctx: ExprContext::Load
+                        }
+                    },
+                    Keyword::Keyword {
+                        arg: None,
+                        value: Expression::Name {
+                            id: String::from("kwargs"),
+                            ctx: ExprContext::Load
+                        }
+                    }
+                ],
+                body: vec![
+                    Statement::Pass
+                ],
+                decorator_list: vec![]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}

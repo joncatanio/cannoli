@@ -294,6 +294,7 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::Try   => parse_try_stmt(stream.next(), stream),
         Token::With  => parse_with_stmt(stream.next(), stream),
         Token::Def   => parse_func_def(stream.next(), vec![], stream),
+        Token::Class => parse_class_def(stream.next(), vec![], stream),
         _ => unimplemented!()
     }
 }
@@ -1517,7 +1518,7 @@ fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
                 Token::Rparen => parse_atom_trailer(stream.next(),
                     Expression::Call { func: Box::new(expr), args, keywords },
                     stream),
-                token => panic!("expected ')', found '{:?}'", token)
+                t => panic!("syntax error: expected ')', found '{:?}'", t)
             }
         },
         Token::Lbracket => {
@@ -1530,7 +1531,7 @@ fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
                         ctx: ExprContext::Load
                     },
                     stream),
-                token => panic!("expected ']', found '{:?}'", token)
+                t => panic!("syntax error: expected ']', found '{:?}'", t)
             }
         },
         Token::Dot => {
@@ -1541,7 +1542,7 @@ fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
                     },
                     stream
                 ),
-                token => panic!("expected identifier, found '{:?}'", token)
+                t => panic!("syntax error: expected id, found '{:?}'", t)
             }
         },
         _ => (opt, expr)
@@ -1855,6 +1856,32 @@ fn parse_set_maker(opt: Option<(usize, ResultToken)>, expr: Expression,
         },
         _ => (opt, Expression::Set { elts: vec![expr] })
     }
+}
+
+fn parse_class_def(opt: Option<(usize, ResultToken)>,
+    decorator_list: Vec<Expression>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let (opt, name) = match util::get_token(&opt) {
+        Token::Identifier(name) => (stream.next(), name),
+        t => panic!("syntax error: expected id, found {:?}", t)
+    };
+    let (opt, bases, keywords) = match util::get_token(&opt) {
+        Token::Lparen => {
+            let (opt, bases, keywords) = parse_arglist(stream.next(), stream);
+
+            match util::get_token(&opt) {
+                Token::Rparen => (stream.next(), bases, keywords),
+                t => panic!("syntax error: expected ')', found '{:?}'", t)
+            }
+        }
+        _ => (opt, vec![], vec![])
+    };
+    let (opt, body) = match util::get_token(&opt) {
+        Token::Colon => parse_suite(stream.next(), stream),
+        t => panic!("syntax error: expected ':', found {:?}", t)
+    };
+
+    (opt, Statement::ClassDef { name, bases, keywords, body, decorator_list })
 }
 
 fn parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)

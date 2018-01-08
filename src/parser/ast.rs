@@ -10,6 +10,8 @@ pub enum Ast {
 pub enum Statement {
     FunctionDef { name: String, args: Arguments, body: Vec<Statement>,
         decorator_list: Vec<Expression>, returns: Option<Expression> },
+    ClassDef { name: String, bases: Vec<Expression>, keywords: Vec<Keyword>,
+        body: Vec<Statement>, decorator_list: Vec<Expression> },
     Return { value: Option<Expression> },
     Delete { targets: Vec<Expression> },
     Assign { targets: Vec<Expression>, value: Expression },
