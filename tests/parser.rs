@@ -144,6 +144,94 @@ fn comparison() {
 
 #[test]
 fn return_call_expr() {
+    let stream = Lexer::new("func(x)\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr { value: Expression::Call {
+                func: Box::new(Expression::Name {
+                    id: String::from("func"),
+                    ctx: ExprContext::Load
+                }),
+                args: vec![
+                    Expression::Name {
+                            id: String::from("x"),
+                            ctx: ExprContext::Load
+                    }
+                ],
+                keywords: vec![]
+            }}
+        ]
+    };
+    assert_eq!(ast, expected);
+    let stream = Lexer::new("func(x)\n");
+    let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("func(x, y, z)\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr { value: Expression::Call {
+                func: Box::new(Expression::Name {
+                    id: String::from("func"),
+                    ctx: ExprContext::Load
+                }),
+                args: vec![
+                    Expression::Name {
+                            id: String::from("x"),
+                            ctx: ExprContext::Load
+                    },
+                    Expression::Name {
+                            id: String::from("y"),
+                            ctx: ExprContext::Load
+                    },
+                    Expression::Name {
+                            id: String::from("z"),
+                            ctx: ExprContext::Load
+                    }
+                ],
+                keywords: vec![]
+            }}
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("func(x, *y, z)\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr { value: Expression::Call {
+                func: Box::new(Expression::Name {
+                    id: String::from("func"),
+                    ctx: ExprContext::Load
+                }),
+                args: vec![
+                    Expression::Name {
+                            id: String::from("x"),
+                            ctx: ExprContext::Load
+                    },
+                    Expression::Starred {
+                        value: Box::new(Expression::Name {
+                            id: String::from("y"),
+                            ctx: ExprContext::Load
+                        }),
+                        ctx: ExprContext::Load
+                    },
+                    Expression::Name {
+                            id: String::from("z"),
+                            ctx: ExprContext::Load
+                    }
+                ],
+                keywords: vec![]
+            }}
+        ]
+    };
+    assert_eq!(ast, expected);
+
     let stream = Lexer::new("return func(1, \"test\", True, *d, **e,)\n");
     let ast = parser::parse_start_symbol(stream);
 
@@ -1808,6 +1896,37 @@ fn lambda_def() {
 
 #[test]
 fn class_def() {
+    let stream = Lexer::new("class C(base1,base2,base3):\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::ClassDef {
+                name: String::from("C"),
+                bases: vec![
+                    Expression::Name {
+                        id: String::from("base1"),
+                        ctx: ExprContext::Load
+                    },
+                    Expression::Name {
+                        id: String::from("base2"),
+                        ctx: ExprContext::Load
+                    },
+                    Expression::Name {
+                        id: String::from("base3"),
+                        ctx: ExprContext::Load
+                    }
+                ],
+                keywords: vec![],
+                body: vec![
+                    Statement::Pass
+                ],
+                decorator_list: vec![]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
     let stream = Lexer::new("class C(base, key=word, **kwargs):\n   pass\n");
     let ast = parser::parse_start_symbol(stream);
 
@@ -1841,6 +1960,133 @@ fn class_def() {
                     Statement::Pass
                 ],
                 decorator_list: vec![]
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn decorated_defs() {
+    let stream = Lexer::new("@dec.a.b.c(x,y,z)\ndef func():\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::FunctionDef {
+                name: String::from("func"),
+                args: Arguments::Arguments {
+                    args: vec![],
+                    vararg: None,
+                    kwonlyargs: vec![],
+                    kw_defaults: vec![],
+                    kwarg: None,
+                    defaults: vec![]
+                },
+                body: vec![
+                    Statement::Pass
+                ],
+                decorator_list: vec![
+                    Expression::Call {
+                        func: Box::new(Expression::Attribute {
+                            value: Box::new(Expression::Attribute {
+                                value: Box::new(Expression::Attribute {
+                                    value: Box::new(Expression:: Name {
+                                        id: String::from("dec"),
+                                        ctx: ExprContext::Load
+                                    }),
+                                    attr: String::from("a"),
+                                    ctx: ExprContext::Load
+                                }),
+                                attr: String::from("b"),
+                                ctx: ExprContext::Load
+                            }),
+                            attr: String::from("c"),
+                            ctx: ExprContext::Load
+                        }),
+                        args: vec![
+                            Expression::Name { id: String::from("x"),
+                                ctx: ExprContext::Load },
+                            Expression::Name { id: String::from("y"),
+                                ctx: ExprContext::Load },
+                            Expression::Name { id: String::from("z"),
+                                ctx: ExprContext::Load }
+                        ],
+                        keywords: vec![]
+                    }
+                ],
+                returns: None
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("@dec.a.b.c(x,y,z,)\n@time\nclass C(base, \
+        key=word, **kwargs):\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::ClassDef {
+                name: String::from("C"),
+                bases: vec![
+                    Expression::Name {
+                        id: String::from("base"),
+                        ctx: ExprContext::Load
+                    }
+                ],
+                keywords: vec![
+                    Keyword::Keyword {
+                        arg: Some(String::from("key")),
+                        value: Expression::Name {
+                            id: String::from("word"),
+                            ctx: ExprContext::Load
+                        }
+                    },
+                    Keyword::Keyword {
+                        arg: None,
+                        value: Expression::Name {
+                            id: String::from("kwargs"),
+                            ctx: ExprContext::Load
+                        }
+                    }
+                ],
+                body: vec![
+                    Statement::Pass
+                ],
+                decorator_list: vec![
+                    Expression::Call {
+                        func: Box::new(Expression::Attribute {
+                            value: Box::new(Expression::Attribute {
+                                value: Box::new(Expression::Attribute {
+                                    value: Box::new(Expression:: Name {
+                                        id: String::from("dec"),
+                                        ctx: ExprContext::Load
+                                    }),
+                                    attr: String::from("a"),
+                                    ctx: ExprContext::Load
+                                }),
+                                attr: String::from("b"),
+                                ctx: ExprContext::Load
+                            }),
+                            attr: String::from("c"),
+                            ctx: ExprContext::Load
+                        }),
+                        args: vec![
+                            Expression::Name { id: String::from("x"),
+                                ctx: ExprContext::Load },
+                            Expression::Name { id: String::from("y"),
+                                ctx: ExprContext::Load },
+                            Expression::Name { id: String::from("z"),
+                                ctx: ExprContext::Load }
+                        ],
+                        keywords: vec![]
+                    },
+                    Expression::Name {
+                        id: String::from("time"),
+                        ctx: ExprContext::Load
+                    }
+                ]
             }
         ]
     };

@@ -34,6 +34,54 @@ fn parse_file_input(opt: Option<(usize, ResultToken)>,
     }
 }
 
+fn parse_decorator(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, expr) = parse_dotted_name_attr(opt, stream);
+
+    match util::get_token(&opt) {
+        Token::Newline => (stream.next(), expr),
+        Token::Lparen => {
+            let (opt, args, keywords) = parse_arglist(stream.next(), stream);
+            let opt = match util::get_token(&opt) {
+                Token::Rparen => stream.next(),
+                t => panic!("syntax error: expected ')', found '{:?}'", t)
+            };
+            let opt = match util::get_token(&opt) {
+                Token::Newline => stream.next(),
+                t => panic!("syntax error: expected ')', found '{:?}'", t)
+            };
+
+            (opt, Expression::Call { func: Box::new(expr), args, keywords })
+        },
+        _ => panic!("syntax error: invalid syntax")
+    }
+}
+
+fn parse_decorators(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+    match util::get_token(&opt) {
+        Token::At => {
+            let (opt, decorator) = parse_decorator(stream.next(), stream);
+            let (opt, mut decorator_list) = parse_decorators(opt, stream);
+
+            decorator_list.insert(0, decorator);
+            (opt, decorator_list)
+        },
+        _ => (opt, vec![])
+    }
+}
+
+fn parse_decorated(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let (opt, decorator_list) = parse_decorators(opt, stream);
+
+    match util::get_token(&opt) {
+        Token::Def   => parse_func_def(stream.next(), decorator_list, stream),
+        Token::Class => parse_class_def(stream.next(), decorator_list, stream),
+        t => panic!("syntax error: invalid syntax {:?}", t)
+    }
+}
+
 fn parse_func_def(opt: Option<(usize, ResultToken)>,
     decorator_list: Vec<Expression>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Statement) {
@@ -295,6 +343,7 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::With  => parse_with_stmt(stream.next(), stream),
         Token::Def   => parse_func_def(stream.next(), vec![], stream),
         Token::Class => parse_class_def(stream.next(), vec![], stream),
+        Token::At    => parse_decorated(opt, stream),
         _ => unimplemented!()
     }
 }
@@ -593,14 +642,14 @@ fn parse_import_as_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Alias) {
     let (opt, name) = match util::get_token(&opt) {
         Token::Identifier(s) => (stream.next(), s),
-        t => panic!("syntax error: expeced identifier, found {:?}", t)
+        t => panic!("syntax error: expeced id, found {:?}", t)
     };
     let (opt, asname) = match util::get_token(&opt) {
         Token::As => {
             let opt = stream.next();
             match util::get_token(&opt) {
                 Token::Identifier(s) => (stream.next(), Some(s)),
-                t => panic!("syntax error: expeced identifier, found {:?}", t)
+                t => panic!("syntax error: expeced id, found {:?}", t)
             }
         },
         _ => (opt, None)
@@ -672,7 +721,7 @@ fn parse_dotted_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<String>) {
     let (opt, name) = match util::get_token(&opt) {
         Token::Identifier(s) => (stream.next(), s),
-        t => panic!("syntax error: expected identifier, found {:?}", t)
+        t => panic!("syntax error: expected id, found {:?}", t)
     };
 
     match util::get_token(&opt) {
@@ -683,6 +732,39 @@ fn parse_dotted_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             (opt, names)
         },
         _ => (opt, vec![name])
+    }
+}
+
+// Functions similarly to `parse_dotted_name` but returns an attribute expr
+// instead of a Vec of strings, this is useful for decorators
+fn parse_dotted_name_attr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    let (opt, value) = match util::get_token(&opt) {
+        Token::Identifier(id) =>
+            (stream.next(), Expression::Name { id, ctx: ExprContext::Load }),
+        t => panic!("syntax error: expected id, found {:?}", t)
+    };
+
+    rec_parse_dotted_name_attr(opt, value, stream)
+}
+
+fn rec_parse_dotted_name_attr(opt: Option<(usize, ResultToken)>,
+    expr: Expression, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Expression) {
+    match util::get_token(&opt) {
+        Token::Dot => {
+            match util::get_token(&stream.next()) {
+                Token::Identifier(attr) => rec_parse_dotted_name_attr(
+                    stream.next(),
+                    Expression::Attribute {
+                        value: Box::new(expr), attr, ctx: ExprContext::Load
+                    },
+                    stream
+                ),
+                t => panic!("syntax error: expected id, found '{:?}'", t)
+            }
+        },
+        _ => (opt, expr)
     }
 }
 
@@ -706,7 +788,7 @@ fn parse_global_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 _ => (opt, Statement::Global { names: vec![name] })
             }
         },
-        token => panic!("expected 'identifier', found '{:?}'", token)
+        token => panic!("expected 'id', found '{:?}'", token)
     }
 }
 
@@ -731,7 +813,7 @@ fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
                 _ => (opt, Statement::Nonlocal { names: vec![name] })
             }
         }
-        token => panic!("expected 'identifier', found '{:?}'", token)
+        token => panic!("expected 'id', found '{:?}'", token)
     }
 }
 
@@ -1884,59 +1966,39 @@ fn parse_class_def(opt: Option<(usize, ResultToken)>,
     (opt, Statement::ClassDef { name, bases, keywords, body, decorator_list })
 }
 
+// Wrapper to abstract tail-recursion from caller
 fn parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Expression>, Vec<Keyword>) {
-    let token = util::get_token(&opt);
-
-    if util::valid_argument(&token) {
-        rec_parse_arglist(opt, stream)
-    } else {
-        (opt, vec![], vec![])
-    }
+    rec_parse_arglist(opt, vec![], vec![], stream)
 }
 
-fn rec_parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+fn rec_parse_arglist(opt: Option<(usize, ResultToken)>,
+    mut args: Vec<Expression>, mut keywords: Vec<Keyword>, stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Expression>, Vec<Keyword>) {
-    let (opt, expr, arg, arg_type) = parse_argument(opt, stream);
+    if util::valid_argument(&util::get_token(&opt)) {
+        let (opt, expr, arg, arg_type) = parse_argument(opt, stream);
 
-    match util::get_token(&opt) {
-        Token::Comma => {
-            let opt = stream.next();
-            let token = util::get_token(&opt);
-
-            if util::valid_argument(&token) {
-                let (opt, mut args, mut keywords) =
-                    rec_parse_arglist(opt, stream);
-
-                match arg_type {
-                    ArgType::Positional => {
-                        if keywords.is_empty() {
-                            panic!("positional argument follows keyword \
-                                    argument unpacking")
-                        }
-                        args.insert(0, expr)
-                    },
-                    ArgType::Keyword => keywords.insert(0,
-                        Keyword::Keyword { arg, value: expr })
+        match arg_type {
+            ArgType::Positional => {
+                if !keywords.is_empty() {
+                    panic!("positional argument follows keyword \
+                        argument unpacking")
                 }
-
-                (opt, args, keywords)
-            } else {
-                // Trailing comma case
-                match arg_type {
-                    ArgType::Positional => (opt, vec![expr], vec![]),
-                    ArgType::Keyword => (opt, vec![],
-                        vec![Keyword::Keyword { arg, value: expr }])
-                }
-            }
-        },
-        _ => {
-            match arg_type {
-                ArgType::Positional => (opt, vec![expr], vec![]),
-                ArgType::Keyword => (opt, vec![],
-                    vec![Keyword::Keyword { arg, value: expr }])
+                args.push(expr)
+            },
+            ArgType::Keyword => {
+                keywords.push(Keyword::Keyword { arg, value: expr })
             }
         }
+
+        let opt = match util::get_token(&opt) {
+            Token::Comma => stream.next(),
+            _ => opt
+        };
+
+        rec_parse_arglist(opt, args, keywords, stream)
+    } else {
+        (opt, args, keywords)
     }
 }
 
