@@ -34,6 +34,228 @@ fn parse_file_input(opt: Option<(usize, ResultToken)>,
     }
 }
 
+fn parse_func_def(opt: Option<(usize, ResultToken)>,
+    decorator_list: Vec<Expression>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Statement) {
+    let (opt, name) = match util::get_token(&opt) {
+        Token::Identifier(name) => (stream.next(), name),
+        t => panic!("syntax error: expected id, found {:?}", t)
+    };
+    let (opt, args) = parse_parameters(opt, stream);
+    let (opt, returns) = match util::get_token(&opt) {
+        Token::Arrow => {
+            let (opt, expr) = parse_test_expr(stream.next(), stream);
+            (opt, Some(expr))
+        },
+        _ => (opt, None)
+    };
+    let (opt, body) = match util::get_token(&opt) {
+        Token::Colon => parse_suite(stream.next(), stream),
+        t => panic!("syntax error: expected ':', found {:?}", t)
+    };
+
+    (opt, Statement::FunctionDef { name, args, body, decorator_list, returns })
+}
+
+fn parse_parameters(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Arguments) {
+    match util::get_token(&opt) {
+        Token::Lparen => {
+            let arguments = Arguments::Arguments {
+                args: vec![], vararg: None, kwonlyargs: vec![],
+                kw_defaults: vec![], kwarg: None, defaults: vec![]
+            };
+            let (opt, typedargslist) = parse_argslist(stream.next(),
+                parse_tfpdef, false, arguments, stream);
+
+            match util::get_token(&opt) {
+                Token::Rparen => (stream.next(), typedargslist),
+                t => panic!("syntax error: expected ')', found {:?}", t)
+            }
+        },
+        t => panic!("syntax error: expected '(', found {:?}", t)
+    }
+}
+
+// Tail-recursively destructures and modifies an Arguments::Arguments the base
+// case is an invalid argslist Token which returns the completed Arguments enum
+fn parse_argslist(opt: Option<(usize, ResultToken)>,
+    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer) ->
+    (Option<(usize, ResultToken)>, Arg), force_kw: bool, arguments: Arguments,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Arguments) {
+    match util::get_token(&opt) {
+        Token::Times => {
+            let (opt, arguments) = parse_argslist_vararg(stream.next(),
+                parse_f, arguments, stream);
+
+            let opt = match util::get_token(&opt) {
+                Token::Comma => stream.next(),
+                _ => opt
+            };
+            parse_argslist(opt, parse_f, true, arguments, stream)
+        },
+        Token::Exponent => {
+            let (opt, arguments) = parse_argslist_kwarg(stream.next(),
+                parse_f, arguments, stream);
+
+            let opt = match util::get_token(&opt) {
+                Token::Comma => stream.next(),
+                _ => opt
+            };
+            parse_argslist(opt, parse_f, force_kw, arguments, stream)
+        },
+        Token::Identifier(_) => {
+            let (opt, arguments) = parse_argslist_id(opt, parse_f, force_kw,
+                arguments, stream);
+
+            let opt = match util::get_token(&opt) {
+                Token::Comma => stream.next(),
+                _ => opt
+            };
+            parse_argslist(opt, parse_f, force_kw, arguments, stream)
+        },
+        _ => (opt, arguments)
+    }
+}
+
+fn parse_argslist_vararg(opt: Option<(usize, ResultToken)>,
+    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer) ->
+    (Option<(usize, ResultToken)>, Arg), arguments: Arguments,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Arguments) {
+    // Destructure the Arguments enum to modify its contents
+    let (args, vararg, kwonlyargs, kw_defaults, kwarg, defaults) =
+        match arguments {
+            Arguments::Arguments { args, vararg, kwonlyargs,
+                kw_defaults, kwarg, defaults } =>
+                (args, vararg, kwonlyargs, kw_defaults, kwarg, defaults)
+    };
+
+    if kwarg.is_some() || vararg.is_some() {
+        panic!("syntax error: invalid syntax")
+    }
+
+    let (opt, vararg) = match util::get_token(&opt) {
+        Token::Identifier(_) => {
+            let (opt, arg) = parse_f(opt, stream);
+            (opt, Some(arg))
+        },
+        _ => (opt, None)
+    };
+
+
+    (opt, Arguments::Arguments { args, vararg, kwonlyargs,
+        kw_defaults, kwarg, defaults })
+}
+
+fn parse_argslist_kwarg(opt: Option<(usize, ResultToken)>,
+    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer) ->
+    (Option<(usize, ResultToken)>, Arg), arguments: Arguments,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Arguments) {
+    // Destructure the Arguments enum to modify its contents
+    let (args, vararg, kwonlyargs, kw_defaults, kwarg, defaults) =
+        match arguments {
+            Arguments::Arguments { args, vararg, kwonlyargs,
+                kw_defaults, kwarg, defaults } =>
+                (args, vararg, kwonlyargs, kw_defaults, kwarg, defaults)
+    };
+
+    if kwarg.is_some() {
+        panic!("syntax error: invalid syntax")
+    }
+
+    let (opt, arg) = parse_f(opt, stream);
+    (opt, Arguments::Arguments { args, vararg, kwonlyargs,
+        kw_defaults, kwarg: Some(arg), defaults })
+}
+
+fn parse_argslist_id(opt: Option<(usize, ResultToken)>,
+    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer) ->
+    (Option<(usize, ResultToken)>, Arg), force_kw: bool, arguments: Arguments,
+    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Arguments) {
+    // Destructure the Arguments enum to modify its contents
+    let (mut args, vararg, mut kwonlyargs, mut kw_defaults, kwarg,
+        mut defaults) = match arguments {
+            Arguments::Arguments { args, vararg, kwonlyargs,
+                kw_defaults, kwarg, defaults } =>
+                (args, vararg, kwonlyargs, kw_defaults, kwarg, defaults)
+    };
+
+    if kwarg.is_some() {
+        panic!("syntax error: invalid syntax")
+    }
+
+    let (opt, arg) = parse_f(opt, stream);
+    let (opt, default) = match util::get_token(&opt) {
+        Token::Assign => {
+            let opt = stream.next();
+
+            if util::valid_test_expr(&util::get_token(&opt)) {
+                let (opt, expr) = parse_test_expr(opt, stream);
+                (opt, Some(expr))
+            } else {
+                panic!("syntax error: invalid syntax")
+            }
+        },
+        _ => (opt, None)
+    };
+
+    if force_kw || vararg.is_some() {
+        // Keyword argument
+        kwonlyargs.push(arg);
+
+        match default {
+            Some(expr) => kw_defaults.push(expr),
+            None => kw_defaults.push(Expression::None)
+        }
+    } else if default.is_none() && !defaults.is_empty() {
+        // Ensure that the positional argument is in a valid order
+        panic!("syntax error: non-default argument follows default argument")
+    } else {
+        // Positional argument
+        args.push(arg);
+
+        if default.is_some() {
+            defaults.push(default.unwrap());
+        }
+    }
+
+    (opt, Arguments::Arguments { args, vararg, kwonlyargs,
+        kw_defaults, kwarg, defaults })
+}
+
+fn parse_tfpdef(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Arg) {
+    let (opt, arg) = match util::get_token(&opt) {
+        Token::Identifier(arg) => (stream.next(), arg),
+        t => panic!("syntax error: expected id, found {:?}", t)
+    };
+    let (opt, annotation) = match util::get_token(&opt) {
+        Token::Colon => {
+            let opt = stream.next();
+
+            if util::valid_test_expr(&util::get_token(&opt)) {
+                let (opt, expr) = parse_test_expr(opt, stream);
+                (opt, Some(expr))
+            } else {
+                panic!("syntax error: invalid syntax")
+            }
+        },
+        _ => (opt, None)
+    };
+
+    (opt, Arg::Arg { arg, annotation })
+}
+
+fn parse_vfpdef(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
+    -> (Option<(usize, ResultToken)>, Arg) {
+    let (opt, arg) = match util::get_token(&opt) {
+        Token::Identifier(arg) => (stream.next(), arg),
+        t => panic!("syntax error: expected id, found {:?}", t)
+    };
+
+    (opt, Arg::Arg { arg, annotation: None })
+}
+
 fn parse_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     -> (Option<(usize, ResultToken)>, Vec<Statement>) {
     let token = util::get_token(&opt);
@@ -71,6 +293,7 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
         Token::For   => parse_for_stmt(stream.next(), stream),
         Token::Try   => parse_try_stmt(stream.next(), stream),
         Token::With  => parse_with_stmt(stream.next(), stream),
+        Token::Def   => parse_func_def(stream.next(), vec![], stream),
         _ => unimplemented!()
     }
 }

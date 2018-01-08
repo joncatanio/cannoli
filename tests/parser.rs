@@ -1524,3 +1524,186 @@ fn try_statment() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn funcdef() {
+    let stream = Lexer::new("def func():\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::FunctionDef {
+                name: String::from("func"),
+                args: Arguments::Arguments {
+                    args: vec![],
+                    vararg: None,
+                    kwonlyargs: vec![],
+                    kw_defaults: vec![],
+                    kwarg: None,
+                    defaults: vec![]
+                },
+                body: vec![
+                    Statement::Pass
+                ],
+                decorator_list: vec![],
+                returns: None
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("def func(a):\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::FunctionDef {
+                name: String::from("func"),
+                args: Arguments::Arguments {
+                    args: vec![
+                        Arg::Arg {
+                            arg: String::from("a"),
+                            annotation: None
+                        }
+                    ],
+                    vararg: None,
+                    kwonlyargs: vec![],
+                    kw_defaults: vec![],
+                    kwarg: None,
+                    defaults: vec![]
+                },
+                body: vec![
+                    Statement::Pass
+                ],
+                decorator_list: vec![],
+                returns: None
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("def func(x,*a:q,b,c,**kwargs:name):\
+        \n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::FunctionDef {
+                name: String::from("func"),
+                args: Arguments::Arguments {
+                    args: vec![
+                        Arg::Arg {
+                            arg: String::from("x"),
+                            annotation: None
+                        }
+                    ],
+                    vararg: Some(Arg::Arg {
+                        arg: String::from("a"),
+                        annotation: Some(Expression::Name {
+                            id: String::from("q"),
+                            ctx: ExprContext::Load
+                        })
+                    }),
+                    kwonlyargs: vec![
+                        Arg::Arg {
+                            arg: String::from("b"),
+                            annotation: None
+                        },
+                        Arg::Arg {
+                            arg: String::from("c"),
+                            annotation: None
+                        }
+                    ],
+                    kw_defaults: vec![
+                        Expression::None,
+                        Expression::None
+                    ],
+                    kwarg: Some(Arg::Arg {
+                        arg: String::from("kwargs"),
+                        annotation: Some(Expression::Name {
+                            id: String::from("name"),
+                            ctx: ExprContext::Load
+                        })
+                    }),
+                    defaults: vec![]
+                },
+                body: vec![
+                    Statement::Pass
+                ],
+                decorator_list: vec![],
+                returns: None
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("def func(x,z=2,*,a:q,b,c,**kwargs:name) \
+        -> rtn:\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::FunctionDef {
+                name: String::from("func"),
+                args: Arguments::Arguments {
+                    args: vec![
+                        Arg::Arg {
+                            arg: String::from("x"),
+                            annotation: None
+                        },
+                        Arg::Arg {
+                            arg: String::from("z"),
+                            annotation: None
+                        }
+                    ],
+                    vararg: None,
+                    kwonlyargs: vec![
+                        Arg::Arg {
+                            arg: String::from("a"),
+                            annotation: Some(Expression::Name {
+                                id: String::from("q"),
+                                ctx: ExprContext::Load
+                            })
+                        },
+                        Arg::Arg {
+                            arg: String::from("b"),
+                            annotation: None
+                        },
+                        Arg::Arg {
+                            arg: String::from("c"),
+                            annotation: None
+                        }
+                    ],
+                    kw_defaults: vec![
+                        Expression::None,
+                        Expression::None,
+                        Expression::None
+                    ],
+                    kwarg: Some(Arg::Arg {
+                        arg: String::from("kwargs"),
+                        annotation: Some(Expression::Name {
+                            id: String::from("name"),
+                            ctx: ExprContext::Load
+                        })
+                    }),
+                    defaults: vec![
+                        Expression::Num {
+                            n: Number::DecInteger(String::from("2"))
+                        }
+                    ]
+                },
+                body: vec![
+                    Statement::Pass
+                ],
+                decorator_list: vec![],
+                returns: Some(Expression::Name { id: String::from("rtn"),
+                    ctx: ExprContext::Load })
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+    let stream = Lexer::new("def func(x,z=2,*,a:q,b,c,**kwargs:name,) \
+        -> rtn:\n   pass\n");
+    let ast = parser::parse_start_symbol(stream);
+    assert_eq!(ast, expected);
+}

@@ -8,6 +8,8 @@ pub enum Ast {
 
 #[derive(Debug, PartialEq)]
 pub enum Statement {
+    FunctionDef { name: String, args: Arguments, body: Vec<Statement>,
+        decorator_list: Vec<Expression>, returns: Option<Expression> },
     Return { value: Option<Expression> },
     Delete { targets: Vec<Expression> },
     Assign { targets: Vec<Expression>, value: Expression },
@@ -38,6 +40,7 @@ pub enum Expression {
     BoolOp { op: BoolOperator, values: Vec<Expression> },
     BinOp { left: Box<Expression>, op: Operator, right: Box<Expression> },
     UnaryOp { op: UnaryOperator, operand: Box<Expression> },
+    Lambda { args: Box<Arguments>, body: Box<Expression> },
     If { test: Box<Expression>, body: Box<Expression>,
         orelse: Box<Expression> },
     Dict { keys: Vec<Expression>, values: Vec<Expression> },
@@ -47,7 +50,7 @@ pub enum Expression {
     DictComp { key: Box<Expression>, value: Box<Expression>,
         generators: Vec<Comprehension> },
     Generator { elt: Box<Expression>, generators: Vec<Comprehension> },
-    None, // For DictComp to have even length key/value lists
+    None, // For DictComp/Arguments to have even length key/value lists
     Yield { value: Option<Box<Expression>> },
     YieldFrom { value: Box<Expression> },
     Compare { left: Box<Expression>, ops: Vec<CmpOperator>,
@@ -140,6 +143,18 @@ pub enum Comprehension {
 pub enum ExceptHandler {
     ExceptHandler { etype: Option<Expression>, name: Option<String>,
         body: Vec<Statement> }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Arguments {
+    Arguments { args: Vec<Arg>, vararg: Option<Arg>, kwonlyargs: Vec<Arg>,
+        kw_defaults: Vec<Expression>, kwarg: Option<Arg>,
+        defaults: Vec<Expression> }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Arg {
+    Arg { arg: String, annotation: Option<Expression> }
 }
 
 #[derive(Debug, PartialEq)]
