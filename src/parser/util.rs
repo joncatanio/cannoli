@@ -3,22 +3,14 @@ use ::lexer::tokens::Token;
 use super::ast::*;
 
 /* Helper functions */
-pub fn get_token(opt: &Option<(usize, ResultToken)>) -> Token {
+pub fn get_token(opt: &Option<(usize, ResultToken)>)
+    -> Result<Token, ParserError> {
     if opt.is_none() {
-        panic!("syntax error: unexpected EOF");
+        Err(ParserError::UnexpectedEOF)
+    } else {
+        let (_, result_token) = opt.clone().unwrap();
+        Ok(result_token.clone().unwrap())
     }
-    let (_, result_token) = opt.clone().unwrap();
-    result_token.clone().unwrap()
-}
-
-// Returns an error message listing the token that was expected.
-pub fn get_token_expect(opt: &Option<(usize, ResultToken)>, token: Token)
-    -> Token {
-    if opt.is_none() {
-        panic!("expected '{:?}', found 'None'", token)
-    }
-    let (_, result_token) = opt.clone().unwrap();
-    result_token.clone().unwrap()
 }
 
 // Checks for `not in` and `is not` which needs to peek at the next token and

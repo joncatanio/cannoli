@@ -12,7 +12,7 @@ use self::errors::ParserError;
 type OptToken = Option<(usize, ResultToken)>;
 
 pub fn parse_start_symbol(mut stream: Lexer) -> Result<Ast, ParserError> {
-    let (opt, ast) = try!(parse_file_input(stream.next(), &mut stream));
+    let (opt, ast) = parse_file_input(stream.next(), &mut stream)?;
 
     match opt {
         Some(_) => panic!("expected 'EOF' found '{:?}'", opt.unwrap()),
@@ -31,7 +31,7 @@ fn parse_file_input(opt: OptToken, mut stream: &mut Lexer)
         _ => {
             let (opt, mut stmt_vec) = parse_stmt(opt, &mut stream);
             let (opt, Ast::Module { body }) =
-                try!(parse_file_input(opt, &mut stream));
+                parse_file_input(opt, &mut stream)?;
 
             stmt_vec.extend(body);
             Ok((opt, Ast::Module { body: stmt_vec }))
@@ -1611,7 +1611,7 @@ fn parse_atom_trailer(opt: OptToken, expr: Expression,
         Token::Lbracket => {
             let (opt, slice) = parse_subscript_list(stream.next(), stream);
 
-            match util::get_token_expect(&opt, Token::Rbracket) {
+            match util::get_token(&opt) {
                 Token::Rbracket => parse_atom_trailer(stream.next(),
                     Expression::Subscript {
                         value: Box::new(expr), slice: Box::new(slice),
