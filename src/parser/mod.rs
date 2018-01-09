@@ -1,24 +1,29 @@
 pub mod ast;
 mod util;
+mod errors;
 
 use super::lexer::{Lexer, ResultToken};
 use super::lexer::tokens::Token;
 use self::ast::*;
 use self::util::{ArgType, TLCompType};
+use self::errors::ParserError;
 
-pub fn parse_start_symbol(mut stream: Lexer) -> Ast {
-    let (next_token, ast) = parse_file_input(stream.next(), &mut stream);
+// Optional tuple with line number and result token
+type OptToken = Option<(usize, ResultToken)>;
 
-    match next_token {
-        Some(_) => panic!("expected 'EOF' found '{:?}'", next_token.unwrap()),
-        None    => ast
+pub fn parse_start_symbol(mut stream: Lexer) -> Result<Ast, ParserError> {
+    let (opt, ast) = try!(parse_file_input(stream.next(), &mut stream));
+
+    match opt {
+        Some(_) => panic!("expected 'EOF' found '{:?}'", opt.unwrap()),
+        None    => Ok(ast)
     }
 }
 
-fn parse_file_input(opt: Option<(usize, ResultToken)>,
-    mut stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Ast) {
+fn parse_file_input(opt: OptToken, mut stream: &mut Lexer)
+    -> Result<(OptToken, Ast), ParserError> {
     if opt.is_none() {
-        return (opt, Ast::Module { body: vec![] });
+        return Ok((opt, Ast::Module { body: vec![] }));
     }
 
     match util::get_token(&opt) {
@@ -26,16 +31,16 @@ fn parse_file_input(opt: Option<(usize, ResultToken)>,
         _ => {
             let (opt, mut stmt_vec) = parse_stmt(opt, &mut stream);
             let (opt, Ast::Module { body }) =
-                parse_file_input(opt, &mut stream);
+                try!(parse_file_input(opt, &mut stream));
 
             stmt_vec.extend(body);
-            (opt, Ast::Module { body: stmt_vec })
+            Ok((opt, Ast::Module { body: stmt_vec }))
         }
     }
 }
 
-fn parse_decorator(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_decorator(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_dotted_name_attr(opt, stream);
 
     match util::get_token(&opt) {
@@ -44,11 +49,11 @@ fn parse_decorator(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
             let (opt, args, keywords) = parse_arglist(stream.next(), stream);
             let opt = match util::get_token(&opt) {
                 Token::Rparen => stream.next(),
-                t => panic!("syntax error: expected ')', found '{:?}'", t)
+                _ => panic!() // TODO replace
             };
             let opt = match util::get_token(&opt) {
                 Token::Newline => stream.next(),
-                t => panic!("syntax error: expected ')', found '{:?}'", t)
+                _ => panic!() // TODO replace
             };
 
             (opt, Expression::Call { func: Box::new(expr), args, keywords })
@@ -57,8 +62,8 @@ fn parse_decorator(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_decorators(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+fn parse_decorators(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Expression>) {
     match util::get_token(&opt) {
         Token::At => {
             let (opt, decorator) = parse_decorator(stream.next(), stream);
@@ -71,8 +76,8 @@ fn parse_decorators(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_decorated(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_decorated(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let (opt, decorator_list) = parse_decorators(opt, stream);
 
     match util::get_token(&opt) {
@@ -82,9 +87,9 @@ fn parse_decorated(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_func_def(opt: Option<(usize, ResultToken)>,
+fn parse_func_def(opt: OptToken,
     decorator_list: Vec<Expression>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+    -> (OptToken, Statement) {
     let (opt, name) = match util::get_token(&opt) {
         Token::Identifier(name) => (stream.next(), name),
         t => panic!("syntax error: expected id, found {:?}", t)
@@ -105,8 +110,8 @@ fn parse_func_def(opt: Option<(usize, ResultToken)>,
     (opt, Statement::FunctionDef { name, args, body, decorator_list, returns })
 }
 
-fn parse_parameters(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Arguments) {
+fn parse_parameters(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Arguments) {
     match util::get_token(&opt) {
         Token::Lparen => {
             let arguments = Arguments::Arguments {
@@ -127,10 +132,10 @@ fn parse_parameters(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 // Tail-recursively destructures and modifies an Arguments::Arguments the base
 // case is an invalid argslist Token which returns the completed Arguments enum
-fn parse_argslist(opt: Option<(usize, ResultToken)>,
-    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer) ->
-    (Option<(usize, ResultToken)>, Arg), force_kw: bool, arguments: Arguments,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Arguments) {
+fn parse_argslist(opt: OptToken,
+    parse_f: fn(OptToken, &mut Lexer) ->
+    (OptToken, Arg), force_kw: bool, arguments: Arguments,
+    stream: &mut Lexer) -> (OptToken, Arguments) {
     match util::get_token(&opt) {
         Token::Times => {
             let (opt, arguments) = parse_argslist_vararg(stream.next(),
@@ -166,10 +171,10 @@ fn parse_argslist(opt: Option<(usize, ResultToken)>,
     }
 }
 
-fn parse_argslist_vararg(opt: Option<(usize, ResultToken)>,
-    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer) ->
-    (Option<(usize, ResultToken)>, Arg), arguments: Arguments,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Arguments) {
+fn parse_argslist_vararg(opt: OptToken,
+    parse_f: fn(OptToken, &mut Lexer) ->
+    (OptToken, Arg), arguments: Arguments,
+    stream: &mut Lexer) -> (OptToken, Arguments) {
     // Destructure the Arguments enum to modify its contents
     let (args, vararg, kwonlyargs, kw_defaults, kwarg, defaults) =
         match arguments {
@@ -195,10 +200,10 @@ fn parse_argslist_vararg(opt: Option<(usize, ResultToken)>,
         kw_defaults, kwarg, defaults })
 }
 
-fn parse_argslist_kwarg(opt: Option<(usize, ResultToken)>,
-    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer) ->
-    (Option<(usize, ResultToken)>, Arg), arguments: Arguments,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Arguments) {
+fn parse_argslist_kwarg(opt: OptToken,
+    parse_f: fn(OptToken, &mut Lexer) ->
+    (OptToken, Arg), arguments: Arguments,
+    stream: &mut Lexer) -> (OptToken, Arguments) {
     // Destructure the Arguments enum to modify its contents
     let (args, vararg, kwonlyargs, kw_defaults, kwarg, defaults) =
         match arguments {
@@ -216,10 +221,10 @@ fn parse_argslist_kwarg(opt: Option<(usize, ResultToken)>,
         kw_defaults, kwarg: Some(arg), defaults })
 }
 
-fn parse_argslist_id(opt: Option<(usize, ResultToken)>,
-    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer) ->
-    (Option<(usize, ResultToken)>, Arg), force_kw: bool, arguments: Arguments,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Arguments) {
+fn parse_argslist_id(opt: OptToken,
+    parse_f: fn(OptToken, &mut Lexer) ->
+    (OptToken, Arg), force_kw: bool, arguments: Arguments,
+    stream: &mut Lexer) -> (OptToken, Arguments) {
     // Destructure the Arguments enum to modify its contents
     let (mut args, vararg, mut kwonlyargs, mut kw_defaults, kwarg,
         mut defaults) = match arguments {
@@ -271,8 +276,8 @@ fn parse_argslist_id(opt: Option<(usize, ResultToken)>,
         kw_defaults, kwarg, defaults })
 }
 
-fn parse_tfpdef(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Arg) {
+fn parse_tfpdef(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Arg) {
     let (opt, arg) = match util::get_token(&opt) {
         Token::Identifier(arg) => (stream.next(), arg),
         t => panic!("syntax error: expected id, found {:?}", t)
@@ -294,8 +299,8 @@ fn parse_tfpdef(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     (opt, Arg::Arg { arg, annotation })
 }
 
-fn parse_vfpdef(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Arg) {
+fn parse_vfpdef(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Arg) {
     let (opt, arg) = match util::get_token(&opt) {
         Token::Identifier(arg) => (stream.next(), arg),
         t => panic!("syntax error: expected id, found {:?}", t)
@@ -304,8 +309,8 @@ fn parse_vfpdef(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     (opt, Arg::Arg { arg, annotation: None })
 }
 
-fn parse_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Statement>) {
+fn parse_stmt(opt: OptToken, mut stream: &mut Lexer)
+    -> (OptToken, Vec<Statement>) {
     let token = util::get_token(&opt);
 
     if util::valid_simple_stmt(&token) {
@@ -320,8 +325,8 @@ fn parse_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
 // `parse_stmt` recursively. If a compound_stmt is encountered then the Vec will
 // be of size 1. Extending the Vec is a simple implementation of otherwise more
 // complex logic.
-fn parse_stmts(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Statement>) {
+fn parse_stmts(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Statement>) {
     if util::valid_stmt(&util::get_token(&opt)) {
         let (opt, mut stmt_vec) = parse_stmt(opt, stream);
         let (opt, stmts_vec) = parse_stmts(opt, stream);
@@ -333,8 +338,8 @@ fn parse_stmts(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_compound_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     match util::get_token(&opt) {
         Token::If    => parse_if_stmt(stream.next(), stream),
         Token::While => parse_while_stmt(stream.next(), stream),
@@ -348,8 +353,8 @@ fn parse_compound_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Statement>) {
+fn parse_simple_stmt(opt: OptToken, mut stream: &mut Lexer)
+    -> (OptToken, Vec<Statement>) {
     let (opt, small_stmt) = parse_small_stmt(opt, &mut stream);
 
     // TODO maybe use a peek here?
@@ -376,8 +381,8 @@ fn parse_simple_stmt(opt: Option<(usize, ResultToken)>, mut stream: &mut Lexer)
     }
 }
 
-fn parse_small_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_small_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     match util::get_token(&opt) {
         Token::Pass     => (stream.next(), Statement::Pass),
         Token::Global   => parse_global_stmt(stream.next(), stream),
@@ -393,8 +398,8 @@ fn parse_small_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_expr_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_expr_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let (opt, expr) = parse_test_list_star_expr(opt, stream);
 
     match util::get_token(&opt) {
@@ -423,8 +428,8 @@ fn parse_expr_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Expression>, Expression) {
+fn parse_assign(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Expression>, Expression) {
     let (opt, expr) = match util::get_token(&opt) {
         Token::Yield => parse_yield_expr(stream.next(), stream),
         _ => parse_test_list_star_expr(opt, stream)
@@ -441,8 +446,8 @@ fn parse_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_ann_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression, Option<Expression>) {
+fn parse_ann_assign(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression, Option<Expression>) {
     let token = util::get_token(&opt);
     if !util::valid_test_expr(&token) {
         panic!("syntax error: invalid token {:?}", token)
@@ -464,8 +469,8 @@ fn parse_ann_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_test_list_star_expr(opt: Option<(usize, ResultToken)>,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_test_list_star_expr(opt: OptToken,
+    stream: &mut Lexer) -> (OptToken, Expression) {
     let (opt, expr) = match util::get_token(&opt) {
         Token::Times => parse_star_expr(stream.next(), stream),
         _ => parse_test_expr(opt, stream)
@@ -494,8 +499,8 @@ fn parse_test_list_star_expr(opt: Option<(usize, ResultToken)>,
     }
 }
 
-fn parse_aug_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Operator) {
+fn parse_aug_assign(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Operator) {
     let op = match util::get_token(&opt) {
         Token::AssignPlus        => Operator::Add,
         Token::AssignMinus       => Operator::Sub,
@@ -516,8 +521,8 @@ fn parse_aug_assign(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     (stream.next(), op)
 }
 
-fn parse_del_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_del_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     if !util::valid_expr_list(&util::get_token(&opt)) {
         panic!("syntax error: invalid syntax after del keyword")
     }
@@ -528,8 +533,8 @@ fn parse_del_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     (opt, Statement::Delete { targets })
 }
 
-fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_flow_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     match util::get_token(&opt) {
         Token::Break    => (stream.next(), Statement::Break),
         Token::Continue => (stream.next(), Statement::Continue),
@@ -540,8 +545,8 @@ fn parse_flow_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_return_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let token = util::get_token(&opt);
 
     if util::valid_test_expr(&token) {
@@ -552,14 +557,14 @@ fn parse_return_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_yield_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_yield_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let (opt, value) = parse_yield_expr(opt, stream);
     (opt, Statement::Expr { value })
 }
 
-fn parse_raise_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_raise_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     if util::valid_test_expr(&util::get_token(&opt)) {
         let (opt, exc) = parse_test_expr(opt, stream);
 
@@ -581,14 +586,14 @@ fn parse_raise_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_import_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_import_name(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let (opt, names) = parse_dotted_as_names(opt, stream);
     (opt, Statement::Import { names })
 }
 
-fn parse_import_from(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_import_from(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let (opt, level) = parse_import_level(opt, stream);
 
     let (opt, module) = if util::valid_import_as_name(&util::get_token(&opt)) {
@@ -623,8 +628,8 @@ fn parse_import_from(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     (opt, Statement::ImportFrom { module, names, level })
 }
 
-pub fn parse_import_level(opt: Option<(usize, ResultToken)>,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, usize) {
+pub fn parse_import_level(opt: OptToken,
+    stream: &mut Lexer) -> (OptToken, usize) {
     match util::get_token(&opt) {
         Token::Dot => {
             let (opt, level) = parse_import_level(stream.next(), stream);
@@ -638,8 +643,8 @@ pub fn parse_import_level(opt: Option<(usize, ResultToken)>,
     }
 }
 
-fn parse_import_as_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Alias) {
+fn parse_import_as_name(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Alias) {
     let (opt, name) = match util::get_token(&opt) {
         Token::Identifier(s) => (stream.next(), s),
         t => panic!("syntax error: expeced id, found {:?}", t)
@@ -658,8 +663,8 @@ fn parse_import_as_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     (opt, Alias::Alias { name, asname })
 }
 
-fn parse_dotted_as_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Alias) {
+fn parse_dotted_as_name(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Alias) {
     let (opt, names) = parse_dotted_name(opt, stream);
     let name = names.join(".");
 
@@ -680,8 +685,8 @@ fn parse_dotted_as_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 // CPython's parser reports an error when a trailing comma appears with no
 // parentheses. ex: "from module import a,b,c," we might want to also error out
 // but I don't see a reason for doing so at this moment in time.
-fn parse_import_as_names(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Alias>) {
+fn parse_import_as_names(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Alias>) {
     if util::valid_import_as_name(&util::get_token(&opt)) {
         let (opt, alias) = parse_import_as_name(opt, stream);
 
@@ -700,8 +705,8 @@ fn parse_import_as_names(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_dotted_as_names(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Alias>) {
+fn parse_dotted_as_names(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Alias>) {
     let (opt, alias) = parse_dotted_as_name(opt, stream);
 
     match util::get_token(&opt) {
@@ -717,8 +722,8 @@ fn parse_dotted_as_names(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 // Returns a vec of strings, which can be joined with a '.', this is to
 // anticipate any changes to parsing.
-fn parse_dotted_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<String>) {
+fn parse_dotted_name(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<String>) {
     let (opt, name) = match util::get_token(&opt) {
         Token::Identifier(s) => (stream.next(), s),
         t => panic!("syntax error: expected id, found {:?}", t)
@@ -737,8 +742,8 @@ fn parse_dotted_name(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 // Functions similarly to `parse_dotted_name` but returns an attribute expr
 // instead of a Vec of strings, this is useful for decorators
-fn parse_dotted_name_attr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_dotted_name_attr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, value) = match util::get_token(&opt) {
         Token::Identifier(id) =>
             (stream.next(), Expression::Name { id, ctx: ExprContext::Load }),
@@ -748,9 +753,9 @@ fn parse_dotted_name_attr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     rec_parse_dotted_name_attr(opt, value, stream)
 }
 
-fn rec_parse_dotted_name_attr(opt: Option<(usize, ResultToken)>,
+fn rec_parse_dotted_name_attr(opt: OptToken,
     expr: Expression, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+    -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::Dot => {
             match util::get_token(&stream.next()) {
@@ -768,8 +773,8 @@ fn rec_parse_dotted_name_attr(opt: Option<(usize, ResultToken)>,
     }
 }
 
-fn parse_global_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_global_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     match util::get_token(&opt) {
         Token::Identifier(name) => {
             let opt = stream.next();
@@ -792,8 +797,8 @@ fn parse_global_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_nonlocal_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     match util::get_token(&opt) {
         Token::Identifier(name) => {
             let opt = stream.next();
@@ -817,8 +822,8 @@ fn parse_nonlocal_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_assert_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_assert_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     if !util::valid_test_expr(&util::get_token(&opt)) {
         panic!("sytanx error: invalid syntax")
     }
@@ -839,8 +844,8 @@ fn parse_assert_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_if_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_if_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let token = util::get_token(&opt);
     let (opt, test) = if util::valid_test_expr(&token) {
         parse_test_expr(opt, stream)
@@ -877,8 +882,8 @@ fn parse_if_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_while_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_while_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let token = util::get_token(&opt);
     let (opt, test) = if util::valid_test_expr(&token) {
         parse_test_expr(opt, stream)
@@ -909,8 +914,8 @@ fn parse_while_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_for_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_for_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let (opt, mut expr_list) = parse_expr_list(opt, stream);
     let target = if expr_list.len() == 1 {
         expr_list.pop().unwrap()
@@ -949,8 +954,8 @@ fn parse_for_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_try_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_try_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let opt = match util::get_token(&opt) {
         Token::Colon => stream.next(),
         t => panic!("syntax error: expected ':', found {:?}", t)
@@ -1010,8 +1015,8 @@ fn parse_try_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 }
 
 // The compiler can enforce the default exception being last
-fn parse_except_clauses(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<ExceptHandler>) {
+fn parse_except_clauses(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<ExceptHandler>) {
     match util::get_token(&opt) {
         Token::Except => {
             let (opt, etype, name) = parse_except_clause(stream.next(), stream);
@@ -1037,8 +1042,8 @@ fn parse_except_clauses(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_except_clause(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Option<Expression>, Option<String>) {
+fn parse_except_clause(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Option<Expression>, Option<String>) {
     if util::valid_test_expr(&util::get_token(&opt)) {
         let (opt, etype) = parse_test_expr(opt, stream);
 
@@ -1059,8 +1064,8 @@ fn parse_except_clause(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_with_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+fn parse_with_stmt(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Statement) {
     let (opt, items) = parse_with_items(opt, stream);
 
     if items.is_empty() {
@@ -1076,8 +1081,8 @@ fn parse_with_stmt(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     (opt, Statement::With { items, body })
 }
 
-fn parse_with_items(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<WithItem>) {
+fn parse_with_items(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<WithItem>) {
     if util::valid_test_expr(&util::get_token(&opt)) {
         let (opt, item) = parse_with_item(opt, stream);
 
@@ -1095,8 +1100,8 @@ fn parse_with_items(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_with_item(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, WithItem) {
+fn parse_with_item(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, WithItem) {
     let (opt, context_expr) = parse_test_expr(opt, stream);
 
     match util::get_token(&opt) {
@@ -1108,8 +1113,8 @@ fn parse_with_item(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_suite(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Statement>) {
+fn parse_suite(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Statement>) {
     match util::get_token(&opt) {
         Token::Newline => {
             let opt = stream.next();
@@ -1143,8 +1148,8 @@ fn parse_suite(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_test_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::Lambda => parse_lambda(stream.next(), parse_test_expr, stream),
         _ => {
@@ -1177,8 +1182,8 @@ fn parse_test_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_test_nocond(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_test_nocond(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::Lambda => parse_lambda(stream.next(), parse_test_nocond, stream),
         _ => parse_or_test(opt, stream)
@@ -1187,10 +1192,10 @@ fn parse_test_nocond(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 
 // `parse_lambda` covers both `parse_lambdef` and `parse_lambdef_nocond` rules
 // which only vary by the body expression rule which is passed in as `parse_f`
-fn parse_lambda(opt: Option<(usize, ResultToken)>,
-    parse_f: fn(Option<(usize, ResultToken)>, &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression), stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_lambda(opt: OptToken,
+    parse_f: fn(OptToken, &mut Lexer)
+    -> (OptToken, Expression), stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let arguments = Arguments::Arguments {
         args: vec![], vararg: None, kwonlyargs: vec![],
         kw_defaults: vec![], kwarg: None, defaults: vec![]
@@ -1211,8 +1216,8 @@ fn parse_lambda(opt: Option<(usize, ResultToken)>,
     (opt, Expression::Lambda { args: Box::new(varargslist), body })
 }
 
-fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_or_test(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_and_test(opt, stream);
 
     match util::get_token(&opt) {
@@ -1226,8 +1231,8 @@ fn parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn rec_parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+fn rec_parse_or_test(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Expression>) {
     let (opt, expr) = parse_and_test(opt, stream);
 
     match util::get_token(&opt) {
@@ -1241,8 +1246,8 @@ fn rec_parse_or_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_and_test(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_not_test(opt, stream);
 
     match util::get_token(&opt) {
@@ -1256,8 +1261,8 @@ fn parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn rec_parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+fn rec_parse_and_test(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Expression>) {
     let (opt, expr) = parse_not_test(opt, stream);
 
     match util::get_token(&opt) {
@@ -1271,8 +1276,8 @@ fn rec_parse_and_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_not_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_not_test(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::Not => {
             let (opt, expr) = parse_not_test(stream.next(), stream);
@@ -1284,8 +1289,8 @@ fn parse_not_test(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_comparison_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_comparison_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_expr(opt, stream);
     let token = util::get_token(&opt);
 
@@ -1298,8 +1303,8 @@ fn parse_comparison_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn rec_parse_comparison_expr(opt: Option<(usize, ResultToken)>,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>,
+fn rec_parse_comparison_expr(opt: OptToken,
+    stream: &mut Lexer) -> (OptToken,
     Vec<CmpOperator>, Vec<Expression>) {
     let (opt, op) = util::get_cmp_op(&opt, stream).unwrap();
     let (opt, expr) = parse_expr(opt, stream);
@@ -1319,8 +1324,8 @@ fn rec_parse_comparison_expr(opt: Option<(usize, ResultToken)>,
 
 // Basically a wrapper for `parse_expr` that returns Expression::Starred,
 // the check for an asterisk should be done prior to calling this function
-fn parse_star_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_star_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     if !util::valid_expr(&util::get_token(&opt)) {
         panic!("syntax error: expected valid expression after '*'")
     }
@@ -1329,8 +1334,8 @@ fn parse_star_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     (opt, Expression::Starred { value: Box::new(expr), ctx: ExprContext::Load })
 }
 
-fn parse_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_xor_expr(opt, stream);
 
     match util::get_token(&opt) {
@@ -1344,8 +1349,8 @@ fn parse_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_xor_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_xor_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_and_expr(opt, stream);
 
     match util::get_token(&opt) {
@@ -1359,8 +1364,8 @@ fn parse_xor_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_and_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_and_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_shift_expr(opt, stream);
 
     match util::get_token(&opt) {
@@ -1374,8 +1379,8 @@ fn parse_and_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_shift_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_shift_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_arith_expr(opt, stream);
 
     match util::get_shift_op(&opt) {
@@ -1389,8 +1394,8 @@ fn parse_shift_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_arith_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_arith_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_term(opt, stream);
 
     match util::get_arith_op(&opt) {
@@ -1404,8 +1409,8 @@ fn parse_arith_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_term(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_term(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_factor(opt, stream);
 
     match util::get_term_op(&opt) {
@@ -1419,8 +1424,8 @@ fn parse_term(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_factor(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_factor(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     match util::get_factor_op(&opt) {
         Some(op) => {
             let (opt, operand) = parse_factor(stream.next(), stream);
@@ -1431,8 +1436,8 @@ fn parse_factor(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_power(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_power(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_atom_expr(opt, stream);
 
     match util::get_token(&opt) {
@@ -1446,14 +1451,14 @@ fn parse_power(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_atom_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_atom_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, expr) = parse_atom(opt, stream);
     parse_atom_trailer(opt, expr, stream)
 }
 
-fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_atom(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::Lparen => {
             let opt = stream.next();
@@ -1530,8 +1535,8 @@ fn parse_atom(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_test_list_comp(opt: Option<(usize, ResultToken)>, ctype: TLCompType,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_test_list_comp(opt: OptToken, ctype: TLCompType,
+    stream: &mut Lexer) -> (OptToken, Expression) {
     let (opt, expr) = match util::get_token(&opt) {
         Token::Times => parse_star_expr(stream.next(), stream),
         _ => parse_test_expr(opt, stream)
@@ -1565,8 +1570,8 @@ fn parse_test_list_comp(opt: Option<(usize, ResultToken)>, ctype: TLCompType,
 }
 
 // Gets the list of test/star expressions for a non-comprehension descent
-fn rec_parse_test_list_comp(opt: Option<(usize, ResultToken)>,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+fn rec_parse_test_list_comp(opt: OptToken,
+    stream: &mut Lexer) -> (OptToken, Vec<Expression>) {
     let token = util::get_token(&opt);
 
     if util::valid_test_star(&token) {
@@ -1590,8 +1595,8 @@ fn rec_parse_test_list_comp(opt: Option<(usize, ResultToken)>,
     }
 }
 
-fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_atom_trailer(opt: OptToken, expr: Expression,
+    stream: &mut Lexer) -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::Lparen => {
             let (opt, args, keywords) = parse_arglist(stream.next(), stream);
@@ -1631,8 +1636,8 @@ fn parse_atom_trailer(opt: Option<(usize, ResultToken)>, expr: Expression,
     }
 }
 
-fn parse_subscript_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Slice) {
+fn parse_subscript_list(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Slice) {
     let (opt, slice) = parse_subscript(opt, stream);
     // We need to keep track of a trailing comma and only one subscript.
     let trailing_comma = match util::get_token(&opt) {
@@ -1687,8 +1692,8 @@ fn parse_subscript_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn rec_parse_subscript_list(opt: Option<(usize, ResultToken)>,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Vec<Slice>) {
+fn rec_parse_subscript_list(opt: OptToken,
+    stream: &mut Lexer) -> (OptToken, Vec<Slice>) {
     if util::valid_subscript(&util::get_token(&opt)) {
         let (opt, slice) = parse_subscript(opt, stream);
 
@@ -1707,8 +1712,8 @@ fn rec_parse_subscript_list(opt: Option<(usize, ResultToken)>,
     }
 }
 
-fn parse_subscript(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Slice) {
+fn parse_subscript(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Slice) {
     let token = util::get_token(&opt);
     let (opt, lower) = if util::valid_test_expr(&token) {
         let (opt, expr) = parse_test_expr(opt, stream);
@@ -1735,8 +1740,8 @@ fn parse_subscript(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_sliceop(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Option<Expression>) {
+fn parse_sliceop(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Option<Expression>) {
     match util::get_token(&opt) {
         Token::Colon => {
             let opt = stream.next();
@@ -1756,8 +1761,8 @@ fn parse_sliceop(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
 // Returns a Vec since there are multiple Expression values that wrap the
 // expression list. If a Vec of size one is returned, the contained
 // Expression might be pulled out.
-fn parse_expr_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Expression>) {
+fn parse_expr_list(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Expression>) {
     let (opt, expr) = match util::get_token(&opt) {
         Token::Times => parse_star_expr(stream.next(), stream),
         _ => parse_expr(opt, stream)
@@ -1782,8 +1787,8 @@ fn parse_expr_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_test_list(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     let (opt, test_expr) = parse_test_expr(opt, stream);
 
     match util::get_token(&opt) {
@@ -1813,8 +1818,8 @@ fn parse_test_list(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_dict_set_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_dict_set_maker(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     // Get the first expression value and determine if a dict|set is being made
     let (opt, expr, value, is_dict) = match util::get_token(&opt) {
         Token::Exponent => {
@@ -1853,9 +1858,9 @@ fn parse_dict_set_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_dict_maker(opt: Option<(usize, ResultToken)>, key: Expression,
+fn parse_dict_maker(opt: OptToken, key: Expression,
     value: Expression, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+    -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::Comma => {
             let (opt, mut keys, mut values) =
@@ -1876,8 +1881,8 @@ fn parse_dict_maker(opt: Option<(usize, ResultToken)>, key: Expression,
     }
 }
 
-fn rec_parse_dict_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Expression>, Vec<Expression>) {
+fn rec_parse_dict_maker(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Expression>, Vec<Expression>) {
     let token = util::get_token(&opt);
 
     if util::valid_dict_maker(&token) {
@@ -1920,8 +1925,8 @@ fn rec_parse_dict_maker(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_set_maker(opt: Option<(usize, ResultToken)>, expr: Expression,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_set_maker(opt: OptToken, expr: Expression,
+    stream: &mut Lexer) -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::Comma => {
             // Reuse the testlist comp builder since it's the same pattern
@@ -1940,9 +1945,9 @@ fn parse_set_maker(opt: Option<(usize, ResultToken)>, expr: Expression,
     }
 }
 
-fn parse_class_def(opt: Option<(usize, ResultToken)>,
+fn parse_class_def(opt: OptToken,
     decorator_list: Vec<Expression>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Statement) {
+    -> (OptToken, Statement) {
     let (opt, name) = match util::get_token(&opt) {
         Token::Identifier(name) => (stream.next(), name),
         t => panic!("syntax error: expected id, found {:?}", t)
@@ -1967,14 +1972,14 @@ fn parse_class_def(opt: Option<(usize, ResultToken)>,
 }
 
 // Wrapper to abstract tail-recursion from caller
-fn parse_arglist(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Expression>, Vec<Keyword>) {
+fn parse_arglist(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Vec<Expression>, Vec<Keyword>) {
     rec_parse_arglist(opt, vec![], vec![], stream)
 }
 
-fn rec_parse_arglist(opt: Option<(usize, ResultToken)>,
+fn rec_parse_arglist(opt: OptToken,
     mut args: Vec<Expression>, mut keywords: Vec<Keyword>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Vec<Expression>, Vec<Keyword>) {
+    -> (OptToken, Vec<Expression>, Vec<Keyword>) {
     if util::valid_argument(&util::get_token(&opt)) {
         let (opt, expr, arg, arg_type) = parse_argument(opt, stream);
 
@@ -2002,8 +2007,8 @@ fn rec_parse_arglist(opt: Option<(usize, ResultToken)>,
     }
 }
 
-fn parse_argument(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression, Option<String>, ArgType) {
+fn parse_argument(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression, Option<String>, ArgType) {
     match util::get_token(&opt) {
         Token::Exponent => {
             let (opt, expr) = parse_test_expr(stream.next(), stream);
@@ -2043,8 +2048,8 @@ fn parse_argument(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_comp_iter(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_comp_iter(opt: OptToken, gc_expr: Expression,
+    stream: &mut Lexer) -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::For => parse_comp_for(stream.next(), gc_expr, stream),
         Token::If  => parse_comp_if(stream.next(), gc_expr, stream),
@@ -2054,8 +2059,8 @@ fn parse_comp_iter(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
 
 // Returns updated Generator/Comp, it's up to the caller to supply this method
 // with a Expression::(Generator|*Comp) that will be "filled"
-fn parse_comp_for(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_comp_for(opt: OptToken, gc_expr: Expression,
+    stream: &mut Lexer) -> (OptToken, Expression) {
     let (opt, mut expr_list) = parse_expr_list(opt, stream);
     let token = util::get_token(&opt);
 
@@ -2101,8 +2106,8 @@ fn parse_comp_for(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
 }
 
 // Modifies the most recent Comprehension within the generators
-fn parse_comp_if(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
-    stream: &mut Lexer) -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_comp_if(opt: OptToken, gc_expr: Expression,
+    stream: &mut Lexer) -> (OptToken, Expression) {
     let (opt, expr) = parse_test_nocond(opt, stream);
 
     // TODO refactor this in a Rust-esque manner to limit repeated code
@@ -2155,8 +2160,8 @@ fn parse_comp_if(opt: Option<(usize, ResultToken)>, gc_expr: Expression,
     }
 }
 
-fn parse_yield_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_yield_expr(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     if util::valid_yield_arg(&util::get_token(&opt)) {
         parse_yield_arg(opt, stream)
     } else {
@@ -2164,8 +2169,8 @@ fn parse_yield_expr(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
     }
 }
 
-fn parse_yield_arg(opt: Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> (Option<(usize, ResultToken)>, Expression) {
+fn parse_yield_arg(opt: OptToken, stream: &mut Lexer)
+    -> (OptToken, Expression) {
     match util::get_token(&opt) {
         Token::From => {
             let opt = stream.next();

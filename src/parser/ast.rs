@@ -1,12 +1,12 @@
 // Abstract Syntax Tree definitions
 // TODO implement trait or something to add line/col num & other meta info
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Ast {
     Module { body: Vec<Statement> }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     FunctionDef { name: String, args: Arguments, body: Vec<Statement>,
         decorator_list: Vec<Expression>, returns: Option<Expression> },
@@ -37,7 +37,7 @@ pub enum Statement {
     Continue,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     BoolOp { op: BoolOperator, values: Vec<Expression> },
     BinOp { left: Box<Expression>, op: Operator, right: Box<Expression> },
@@ -71,7 +71,7 @@ pub enum Expression {
     Tuple { elts: Vec<Expression>, ctx: ExprContext },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ExprContext {
     Load,
     Store,
@@ -81,7 +81,7 @@ pub enum ExprContext {
     Param
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Slice {
     Slice { lower: Option<Expression>, upper: Option<Expression>,
         step: Option<Expression> },
@@ -89,13 +89,13 @@ pub enum Slice {
     Index { value: Expression }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum BoolOperator {
     And,
     Or
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
     Add,
     Sub,
@@ -112,7 +112,7 @@ pub enum Operator {
     FloorDiv
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum UnaryOperator {
     Invert,
     Not,
@@ -120,7 +120,7 @@ pub enum UnaryOperator {
     USub
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CmpOperator {
     EQ,
     NE,
@@ -134,54 +134,54 @@ pub enum CmpOperator {
     NotIn
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Comprehension {
     // No { ..., int: is_async } in Comprehension definition
     Comprehension { target: Expression, iter: Expression,
         ifs: Vec<Expression> }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ExceptHandler {
     ExceptHandler { etype: Option<Expression>, name: Option<String>,
         body: Vec<Statement> }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Arguments {
     Arguments { args: Vec<Arg>, vararg: Option<Arg>, kwonlyargs: Vec<Arg>,
         kw_defaults: Vec<Expression>, kwarg: Option<Arg>,
         defaults: Vec<Expression> }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Arg {
     Arg { arg: String, annotation: Option<Expression> }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Keyword {
     Keyword { arg: Option<String>, value: Expression }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Alias {
     Alias { name: String, asname: Option<String> }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum WithItem {
     WithItem { context_expr: Expression, optional_vars: Option<Expression> }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Singleton {
     None,
     True,
     False
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Number {
     DecInteger(String),
     BinInteger(String),

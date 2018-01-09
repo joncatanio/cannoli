@@ -7,7 +7,7 @@ use cannoli::parser::ast::*;
 #[test]
 fn keyword_global() {
     let stream = Lexer::new("global var1, var2, var3\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -23,7 +23,7 @@ fn keyword_global() {
 #[test]
 fn keyword_nonlocal() {
     let stream = Lexer::new("nonlocal var1, var2, var3\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -39,7 +39,7 @@ fn keyword_nonlocal() {
 #[test]
 fn pass() {
     let stream = Lexer::new("pass;pass;pass;pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -49,14 +49,14 @@ fn pass() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("pass;pass;pass;pass;\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 }
 
 #[test]
 fn empty_return() {
     let stream = Lexer::new("return\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![Statement::Return { value: None }]
@@ -68,7 +68,7 @@ fn empty_return() {
 fn or_and_test_expr() {
     let stream =
         Lexer::new("return True or False and False or True and False\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -106,7 +106,7 @@ fn comparison() {
     let stream = Lexer::new("return True < False > True <= False >= \
                             True != True in False not in True is False \
                             is not True\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -145,7 +145,7 @@ fn comparison() {
 #[test]
 fn return_call_expr() {
     let stream = Lexer::new("func(x)\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -166,11 +166,11 @@ fn return_call_expr() {
     };
     assert_eq!(ast, expected);
     let stream = Lexer::new("func(x)\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("func(x, y, z)\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -200,7 +200,7 @@ fn return_call_expr() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("func(x, *y, z)\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -233,7 +233,7 @@ fn return_call_expr() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("return func(1, \"test\", True, *d, **e,)\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -272,7 +272,7 @@ fn return_call_expr() {
 #[test]
 fn return_nested_call() {
     let stream = Lexer::new("return f()()()\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -300,7 +300,7 @@ fn return_nested_call() {
 #[test]
 fn slices_and_indexes_1() {
     let stream = Lexer::new("return p[0]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -324,7 +324,7 @@ fn slices_and_indexes_1() {
 #[test]
 fn slices_and_indexes_2() {
     let stream = Lexer::new("return p[0,]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -353,7 +353,7 @@ fn slices_and_indexes_2() {
 #[test]
 fn slices_and_indexes_3() {
     let stream = Lexer::new("return p[0,a]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -384,14 +384,14 @@ fn slices_and_indexes_3() {
 
     // Add trailing comma, should result in the same AST
     let stream = Lexer::new("return p[0,a,]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 }
 
 #[test]
 fn slices_and_indexes_4() {
     let stream = Lexer::new("return p[1:4:-1]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -424,7 +424,7 @@ fn slices_and_indexes_4() {
 #[test]
 fn slices_and_indexes_5() {
     let stream = Lexer::new("return p[1:4:-1,]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -461,7 +461,7 @@ fn slices_and_indexes_5() {
 #[test]
 fn slices_and_indexes_6() {
     let stream = Lexer::new("return p[:]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -485,7 +485,7 @@ fn slices_and_indexes_6() {
 #[test]
 fn slices_and_indexes_7() {
     let stream = Lexer::new("return p[:,0]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -518,7 +518,7 @@ fn slices_and_indexes_7() {
 #[test]
 fn yield_no_arg() {
     let stream = Lexer::new("yield\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -531,7 +531,7 @@ fn yield_no_arg() {
 #[test]
 fn yield_testlist_single() {
     let stream = Lexer::new("yield 1\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -548,7 +548,7 @@ fn yield_testlist_single() {
 #[test]
 fn yield_testlist_tuple() {
     let stream = Lexer::new("yield 1,\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -568,7 +568,7 @@ fn yield_testlist_tuple() {
 #[test]
 fn yield_from_simple() {
     let stream = Lexer::new("yield from 1\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -585,7 +585,7 @@ fn yield_from_simple() {
 #[test]
 fn raise() {
     let stream = Lexer::new("raise\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -598,7 +598,7 @@ fn raise() {
 #[test]
 fn raise_exc() {
     let stream = Lexer::new("raise Exception(\"a\")\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -621,7 +621,7 @@ fn raise_exc() {
 #[test]
 fn raise_exc_from_cause() {
     let stream = Lexer::new("raise Exception(\"a\") from Exception(\"b\")\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -651,7 +651,7 @@ fn raise_exc_from_cause() {
 #[test]
 fn dict_creation() {
     let stream = Lexer::new("{}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -666,7 +666,7 @@ fn dict_creation() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("{a:b}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -687,7 +687,7 @@ fn dict_creation() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("{a:c, **x, b:d,}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -715,14 +715,14 @@ fn dict_creation() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("{a:c, **x, b:d}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 }
 
 #[test]
 fn list_creation() {
     let stream = Lexer::new("[]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -737,7 +737,7 @@ fn list_creation() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("[a,*b,]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -762,14 +762,14 @@ fn list_creation() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("[a,*b]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 }
 
 #[test]
 fn set_creation() {
     let stream = Lexer::new("{a}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -786,7 +786,7 @@ fn set_creation() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("{a, *b,}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -810,14 +810,14 @@ fn set_creation() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("{a, *b}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 }
 
 #[test]
 fn list_comprehension() {
     let stream = Lexer::new("[a for x in y]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -843,7 +843,7 @@ fn list_comprehension() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("[a for x in y for g in q if True]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -884,7 +884,7 @@ fn list_comprehension() {
 #[test]
 fn set_comprehension() {
     let stream = Lexer::new("{a for x in y}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -910,7 +910,7 @@ fn set_comprehension() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("{a for x in y for g in q if True}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -950,7 +950,7 @@ fn set_comprehension() {
 #[test]
 fn dict_comprehension() {
     let stream = Lexer::new("{a:b for x in y}\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -983,7 +983,7 @@ fn dict_comprehension() {
 #[test]
 fn assignment() {
     let stream = Lexer::new("a = 3\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1001,7 +1001,7 @@ fn assignment() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("a = yield\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1019,7 +1019,7 @@ fn assignment() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("a = b = c = d = 3\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1046,7 +1046,7 @@ fn assignment() {
 #[test]
 fn annotated_assign() {
     let stream = Lexer::new("a : int\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1062,7 +1062,7 @@ fn annotated_assign() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("a : int = \"hi\"\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1082,7 +1082,7 @@ fn annotated_assign() {
 fn augmented_assign() {
     let stream = Lexer::new("a += b; a -= b; a *= b; a @= b; a /= b; a %= b; \
         a &= b; a |= b; a ^= b; a <<= b; a >>= b; a **= b; a //= b\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1185,7 +1185,7 @@ fn augmented_assign() {
 #[test]
 fn assert() {
     let stream = Lexer::new("assert condition, \"message\"\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1201,7 +1201,7 @@ fn assert() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("assert condition\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1220,7 +1220,7 @@ fn assert() {
 #[test]
 fn import() {
     let stream = Lexer::new("import mod\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1234,7 +1234,7 @@ fn import() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("import mod1.a.b as m, mod2\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1255,7 +1255,7 @@ fn import() {
 #[test]
 fn import_from() {
     let stream = Lexer::new("from mod import *\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1271,7 +1271,7 @@ fn import_from() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("from .... mod import a,b,c as g\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1292,14 +1292,14 @@ fn import_from() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("from .... mod import (a,b,c as g,)\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 }
 
 #[test]
 fn if_statement() {
     let stream = Lexer::new("if a:\n   x;y;z\n   x = 1\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1333,7 +1333,7 @@ fn if_statement() {
 
     let stream = Lexer::new("if a:\n   x;y;z\n   x = 1\nelif b:\n   func()\n\
         else:\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1387,7 +1387,7 @@ fn if_statement() {
 #[test]
 fn while_statement() {
     let stream = Lexer::new("while True:\n   continue\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1401,7 +1401,7 @@ fn while_statement() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("while True:\n   continue\nelse:\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1419,7 +1419,7 @@ fn while_statement() {
 #[test]
 fn for_statment() {
     let stream = Lexer::new("for x in y:\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1437,7 +1437,7 @@ fn for_statment() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("for x,y in a,b:\n   pass\nelse:\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1469,14 +1469,14 @@ fn for_statment() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("for x,y, in a,b,:\n   pass\nelse:\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 }
 
 #[test]
 fn with_statment() {
     let stream = Lexer::new("with a:\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1495,7 +1495,7 @@ fn with_statment() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("with a as x, b, c as z:\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1529,7 +1529,7 @@ fn with_statment() {
 #[test]
 fn try_statment() {
     let stream = Lexer::new("try:\n   x\nfinally:\n   fin\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1555,7 +1555,7 @@ fn try_statment() {
 
     let stream = Lexer::new("try:\n   x\nexcept Error as e:\n   y\n\
         except NewError as e:\n   z\nelse:\n   pass\nfinally:\n   fin\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1616,7 +1616,7 @@ fn try_statment() {
 #[test]
 fn function_def() {
     let stream = Lexer::new("def func():\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1641,7 +1641,7 @@ fn function_def() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("def func(a):\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1672,7 +1672,7 @@ fn function_def() {
 
     let stream = Lexer::new("def func(x,*a:q,b,c,**kwargs:name):\
         \n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1727,7 +1727,7 @@ fn function_def() {
 
     let stream = Lexer::new("def func(x,z=2,*,a:q,b,c,**kwargs:name) \
         -> rtn:\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1792,14 +1792,14 @@ fn function_def() {
     assert_eq!(ast, expected);
     let stream = Lexer::new("def func(x,z=2,*,a:q,b,c,**kwargs:name,) \
         -> rtn:\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 }
 
 #[test]
 fn lambda_def() {
     let stream = Lexer::new("lambda x,y: x+y\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1837,7 +1837,7 @@ fn lambda_def() {
 
     // lambdef_nocond test
     let stream = Lexer::new("[a for x in y if lambda x,y: x+y]\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1897,7 +1897,7 @@ fn lambda_def() {
 #[test]
 fn class_def() {
     let stream = Lexer::new("class C(base1,base2,base3):\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1928,7 +1928,7 @@ fn class_def() {
     assert_eq!(ast, expected);
 
     let stream = Lexer::new("class C(base, key=word, **kwargs):\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -1969,7 +1969,7 @@ fn class_def() {
 #[test]
 fn decorated_defs() {
     let stream = Lexer::new("@dec.a.b.c(x,y,z)\ndef func():\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![
@@ -2023,7 +2023,7 @@ fn decorated_defs() {
 
     let stream = Lexer::new("@dec.a.b.c(x,y,z,)\n@time\nclass C(base, \
         key=word, **kwargs):\n   pass\n");
-    let ast = parser::parse_start_symbol(stream);
+    let ast = parser::parse_start_symbol(stream).unwrap();
 
     let expected = Ast::Module {
         body: vec![

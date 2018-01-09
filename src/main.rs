@@ -8,10 +8,11 @@ pub mod lexer;
 pub mod parser;
 pub mod compiler;
 
-use lexer::Lexer;
-use clap::{Arg, App};
 use std::io::prelude::*;
 use std::fs::File;
+
+use lexer::Lexer;
+use clap::{Arg, App};
 
 fn main() {
     let args = App::new("cannoli")
@@ -44,7 +45,14 @@ fn main() {
         .expect("error reading the file");
 
     let stream = Lexer::new(&contents);
-    let ast = parser::parse_start_symbol(stream);
+    let result = parser::parse_start_symbol(stream);
+    let ast = if result.is_err() {
+        println!("{}", result.unwrap_err());
+        std::process::exit(1);
+    } else {
+        result.unwrap()
+    };
+
     println!("AST: {:?}", ast);
     compiler::compile(ast);
 }
