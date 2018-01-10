@@ -1,6 +1,7 @@
 use ::lexer::{Lexer, ResultToken};
 use ::lexer::tokens::Token;
 use super::ast::*;
+use ::parser::errors::ParserError;
 
 /* Helper functions */
 pub fn get_token(opt: &Option<(usize, ResultToken)>)
@@ -13,71 +14,81 @@ pub fn get_token(opt: &Option<(usize, ResultToken)>)
     }
 }
 
+// Used internally to force mod.rs to encounter ParserErrors
+fn get_some_token(opt: &Option<(usize, ResultToken)>) -> Option<Token> {
+    if opt.is_none() {
+        None
+    } else {
+        let (_, result_token) = opt.clone().unwrap();
+        Some(result_token.clone().unwrap())
+    }
+}
+
 // Checks for `not in` and `is not` which needs to peek at the next token and
 // will modify the `stream`.
 pub fn get_cmp_op(opt: &Option<(usize, ResultToken)>, stream: &mut Lexer)
-    -> Option<(Option<(usize, ResultToken)>, CmpOperator)> {
-    let token = get_token(&opt);
+    -> Result<(Option<(usize, ResultToken)>, CmpOperator), ParserError> {
+    let token = get_token(&opt)?;
     let opt = stream.next();
-    let next_token = get_token(&opt);
+    let next_token = get_token(&opt)?;
 
     match token {
-        Token::EQ => Some((opt, CmpOperator::EQ)),
-        Token::NE => Some((opt, CmpOperator::NE)),
-        Token::LT => Some((opt, CmpOperator::LT)),
-        Token::LE => Some((opt, CmpOperator::LE)),
-        Token::GT => Some((opt, CmpOperator::GT)),
-        Token::GE => Some((opt, CmpOperator::GE)),
+        Token::EQ => Ok((opt, CmpOperator::EQ)),
+        Token::NE => Ok((opt, CmpOperator::NE)),
+        Token::LT => Ok((opt, CmpOperator::LT)),
+        Token::LE => Ok((opt, CmpOperator::LE)),
+        Token::GT => Ok((opt, CmpOperator::GT)),
+        Token::GE => Ok((opt, CmpOperator::GE)),
         Token::Is => {
             match next_token {
-                Token::Not => Some((stream.next(), CmpOperator::IsNot)),
-                _ => Some((opt, CmpOperator::Is))
+                Token::Not => Ok((stream.next(), CmpOperator::IsNot)),
+                _ => Ok((opt, CmpOperator::Is))
             }
         },
-        Token::In => Some((opt, CmpOperator::In)),
+        Token::In => Ok((opt, CmpOperator::In)),
         Token::Not => {
             match next_token {
-                Token::In => Some((stream.next(), CmpOperator::NotIn)),
-                _ => panic!("expected 'not in', found '{:?}'", next_token)
+                Token::In => Ok((stream.next(), CmpOperator::NotIn)),
+                _ => Err(ParserError::UnexpectedToken(Token::In, opt))
             }
         }
-        _ => None
+        _ => Err(ParserError::InvalidSyntax(opt))
     }
 }
 
 pub fn get_shift_op(opt: &Option<(usize, ResultToken)>) -> Option<Operator> {
-    match get_token(&opt) {
-        Token::Lshift => Some(Operator::LShift),
-        Token::Rshift => Some(Operator::RShift),
+    match get_some_token(&opt) {
+        Some(Token::Lshift) => Some(Operator::LShift),
+        Some(Token::Rshift) => Some(Operator::RShift),
         _ => None
     }
 }
 
 pub fn get_arith_op(opt: &Option<(usize, ResultToken)>) -> Option<Operator> {
-    match get_token(&opt) {
-        Token::Plus  => Some(Operator::Add),
-        Token::Minus => Some(Operator::Sub),
+    match get_some_token(&opt) {
+        Some(Token::Plus)  => Some(Operator::Add),
+        Some(Token::Minus) => Some(Operator::Sub),
         _ => None
     }
 }
 
 pub fn get_term_op(opt: &Option<(usize, ResultToken)>) -> Option<Operator> {
-    match get_token(&opt) {
-        Token::Times       => Some(Operator::Mult),
-        Token::At          => Some(Operator::MatMult),
-        Token::Divide      => Some(Operator::Div),
-        Token::Mod         => Some(Operator::Mod),
-        Token::DivideFloor => Some(Operator::FloorDiv),
+    match get_some_token(&opt) {
+        Some(Token::Times)       => Some(Operator::Mult),
+        Some(Token::At)          => Some(Operator::MatMult),
+        Some(Token::Divide)      => Some(Operator::Div),
+        Some(Token::Mod)         => Some(Operator::Mod),
+        Some(Token::DivideFloor) => Some(Operator::FloorDiv),
         _ => None
     }
 }
 
 pub fn get_factor_op(opt: &Option<(usize, ResultToken)>)
     -> Option<UnaryOperator> {
-    match get_token(&opt) {
-        Token::Plus   => Some(UnaryOperator::UAdd),
-        Token::Minus  => Some(UnaryOperator::USub),
-        Token::BitNot => Some(UnaryOperator::Invert),
+    match get_some_token(&opt) {
+        Some(Token::Plus)   => Some(UnaryOperator::UAdd),
+        Some(Token::Minus)  => Some(UnaryOperator::USub),
+        Some(Token::BitNot) => Some(UnaryOperator::Invert),
         _ => None
     }
 }
