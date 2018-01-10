@@ -12,6 +12,7 @@ pub enum ParserError
     NonDefaultArgFollowsDefault(OptToken),
     PositionalArgAfterKeyword(OptToken),
     KeywordExpression(OptToken),
+    ExpectedEOF(OptToken),
     UnexpectedEOF
 }
 
@@ -39,6 +40,11 @@ impl fmt::Display for ParserError {
                 write!(f, "keyword can't be expression (line {})",
                     opt.clone().unwrap().0)
             },
+            ParserError::ExpectedEOF(ref opt) => {
+                write!(f, "expected 'EOF', found '{}' (line {})",
+                    opt.clone().unwrap().1.unwrap().lexeme(),
+                    opt.clone().unwrap().0)
+            },
             ParserError::UnexpectedEOF => write!(f, "unexpected EOF")
         }
     }
@@ -54,6 +60,7 @@ impl error::Error for ParserError {
             ParserError::PositionalArgAfterKeyword(_) =>
                 "positional argument follows keywork argument unpacking",
             ParserError::KeywordExpression(_) => "keyword can't be expression",
+            ParserError::ExpectedEOF(_) => "expected EOF",
             ParserError::UnexpectedEOF => "unexpected EOF"
         }
     }

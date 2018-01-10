@@ -15,7 +15,7 @@ pub fn parse_start_symbol(mut stream: Lexer) -> Result<Ast, ParserError> {
     let (opt, ast) = parse_file_input(stream.next(), &mut stream)?;
 
     match opt {
-        Some(_) => panic!("expected 'EOF' found '{:?}'", opt.unwrap()),
+        Some(_) => Err(ParserError::ExpectedEOF(opt)),
         None    => Ok(ast)
     }
 }
@@ -1682,7 +1682,7 @@ fn parse_subscript_list(opt: OptToken, stream: &mut Lexer)
             let expr_list = slices.into_iter().map(|s| {
                 match s {
                     Slice::Index { value } => value,
-                    _ => panic!("parser error: expected Index values only")
+                    _ => unreachable!()
                 }
             }).collect();
 
