@@ -29,14 +29,6 @@ fn main() {
             .help("Sets the optimization level: [1-3]"))
         .get_matches();
 
-    // Match optimization level
-    match args.value_of("o").unwrap_or("") {
-        "1" => unimplemented!(),
-        "2" => unimplemented!(),
-        "3" => unimplemented!(),
-        _ => ()
-    }
-
     // Open file and read into `contents`
     let filename = args.value_of("INPUT").unwrap();
     let mut fp = File::open(filename).expect("file not found");
@@ -54,5 +46,5 @@ fn main() {
     };
 
     println!("AST: {:?}", ast);
-    compiler::compile(ast);
+    compiler::compile(ast, &args);
 }

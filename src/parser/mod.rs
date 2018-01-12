@@ -1338,13 +1338,18 @@ fn parse_star_expr(opt: OptToken, stream: &mut Lexer)
 fn parse_expr(opt: OptToken, stream: &mut Lexer)
     -> Result<(OptToken, Expression), ParserError> {
     let (opt, expr) = parse_xor_expr(opt, stream)?;
+    rec_parse_expr(opt, expr, stream)
+}
 
+fn rec_parse_expr(opt: OptToken, expr: Expression, stream: &mut Lexer)
+    -> Result<(OptToken, Expression), ParserError> {
     match util::get_token(&opt)? {
         Token::BitOr => {
-            let (opt, right_expr) = parse_expr(stream.next(), stream)?;
+            let (opt, rht) = parse_xor_expr(stream.next(), stream)?;
+            let expr = Expression::BinOp { left: Box::new(expr),
+                op: Operator::BitOr, right: Box::new(rht) };
 
-            Ok((opt, Expression::BinOp { left: Box::new(expr),
-                op: Operator::BitOr, right: Box::new(right_expr) }))
+            rec_parse_expr(opt, expr, stream)
         },
         _ => Ok((opt, expr))
     }
@@ -1353,13 +1358,18 @@ fn parse_expr(opt: OptToken, stream: &mut Lexer)
 fn parse_xor_expr(opt: OptToken, stream: &mut Lexer)
     -> Result<(OptToken, Expression), ParserError> {
     let (opt, expr) = parse_and_expr(opt, stream)?;
+    rec_parse_xor_expr(opt, expr, stream)
+}
 
+fn rec_parse_xor_expr(opt: OptToken, expr: Expression, stream: &mut Lexer)
+    -> Result<(OptToken, Expression), ParserError> {
     match util::get_token(&opt)? {
         Token::BitXor => {
-            let (opt, right_expr) = parse_xor_expr(stream.next(), stream)?;
+            let (opt, rht) = parse_and_expr(stream.next(), stream)?;
+            let expr = Expression::BinOp { left: Box::new(expr),
+                op: Operator::BitXor, right: Box::new(rht) };
 
-            Ok((opt, Expression::BinOp { left: Box::new(expr),
-                op: Operator::BitXor, right: Box::new(right_expr) }))
+            rec_parse_xor_expr(opt, expr, stream)
         },
         _ => Ok((opt, expr))
     }
@@ -1368,13 +1378,18 @@ fn parse_xor_expr(opt: OptToken, stream: &mut Lexer)
 fn parse_and_expr(opt: OptToken, stream: &mut Lexer)
     -> Result<(OptToken, Expression), ParserError> {
     let (opt, expr) = parse_shift_expr(opt, stream)?;
+    rec_parse_and_expr(opt, expr, stream)
+}
 
+fn rec_parse_and_expr(opt: OptToken, expr: Expression, stream: &mut Lexer)
+    -> Result<(OptToken, Expression), ParserError> {
     match util::get_token(&opt)? {
         Token::BitAnd => {
-            let (opt, right_expr) = parse_and_expr(stream.next(), stream)?;
+            let (opt, rht) = parse_shift_expr(stream.next(), stream)?;
+            let expr = Expression::BinOp { left: Box::new(expr),
+                op: Operator::BitAnd, right: Box::new(rht) };
 
-            Ok((opt, Expression::BinOp { left: Box::new(expr),
-                op: Operator::BitAnd, right: Box::new(right_expr) }))
+            rec_parse_and_expr(opt, expr, stream)
         },
         _ => Ok((opt, expr))
     }
@@ -1383,13 +1398,18 @@ fn parse_and_expr(opt: OptToken, stream: &mut Lexer)
 fn parse_shift_expr(opt: OptToken, stream: &mut Lexer)
     -> Result<(OptToken, Expression), ParserError> {
     let (opt, expr) = parse_arith_expr(opt, stream)?;
+    rec_parse_shift_expr(opt, expr, stream)
+}
 
+fn rec_parse_shift_expr(opt: OptToken, expr: Expression, stream: &mut Lexer)
+    -> Result<(OptToken, Expression), ParserError> {
     match util::get_shift_op(&opt) {
         Some(op) => {
-            let (opt, right_expr) = parse_shift_expr(stream.next(), stream)?;
+            let (opt, rht) = parse_arith_expr(stream.next(), stream)?;
+            let expr = Expression::BinOp { left: Box::new(expr),
+                op, right: Box::new(rht) };
 
-            Ok((opt, Expression::BinOp { left: Box::new(expr),
-                op, right: Box::new(right_expr) }))
+            rec_parse_shift_expr(opt, expr, stream)
         }
         None => Ok((opt, expr))
     }
@@ -1398,13 +1418,18 @@ fn parse_shift_expr(opt: OptToken, stream: &mut Lexer)
 fn parse_arith_expr(opt: OptToken, stream: &mut Lexer)
     -> Result<(OptToken, Expression), ParserError> {
     let (opt, expr) = parse_term(opt, stream)?;
+    rec_parse_arith_expr(opt, expr, stream)
+}
 
+fn rec_parse_arith_expr(opt: OptToken, expr: Expression, stream: &mut Lexer)
+    -> Result<(OptToken, Expression), ParserError> {
     match util::get_arith_op(&opt) {
         Some(op) => {
-            let (opt, right_expr) = parse_arith_expr(stream.next(), stream)?;
+            let (opt, rht) = parse_term(stream.next(), stream)?;
+            let expr = Expression::BinOp { left: Box::new(expr),
+                op, right: Box::new(rht) };
 
-            Ok((opt, Expression::BinOp { left: Box::new(expr),
-                op, right: Box::new(right_expr) }))
+            rec_parse_arith_expr(opt, expr, stream)
         },
         None => Ok((opt, expr))
     }
@@ -1413,13 +1438,18 @@ fn parse_arith_expr(opt: OptToken, stream: &mut Lexer)
 fn parse_term(opt: OptToken, stream: &mut Lexer)
     -> Result<(OptToken, Expression), ParserError> {
     let (opt, expr) = parse_factor(opt, stream)?;
+    rec_parse_term(opt, expr, stream)
+}
 
+fn rec_parse_term(opt: OptToken, expr: Expression, stream: &mut Lexer)
+    -> Result<(OptToken, Expression), ParserError> {
     match util::get_term_op(&opt) {
         Some(op) => {
-            let (opt, right_expr) = parse_term(stream.next(), stream)?;
+            let (opt, rht) = parse_factor(stream.next(), stream)?;
+            let expr = Expression::BinOp { left: Box::new(expr),
+                op, right: Box::new(rht) };
 
-            Ok((opt, Expression::BinOp { left: Box::new(expr),
-                op, right: Box::new(right_expr) }))
+            rec_parse_term(opt, expr, stream)
         },
         None => Ok((opt, expr))
     }
@@ -1443,10 +1473,10 @@ fn parse_power(opt: OptToken, stream: &mut Lexer)
 
     match util::get_token(&opt)? {
         Token::Exponent => {
-            let (opt, right_expr) = parse_factor(stream.next(), stream)?;
+            let (opt, rht) = parse_factor(stream.next(), stream)?;
 
             Ok((opt, Expression::BinOp { left: Box::new(expr),
-                op: Operator::Pow, right: Box::new(right_expr) }))
+                op: Operator::Pow, right: Box::new(rht) }))
         },
         _ => Ok((opt, expr))
     }

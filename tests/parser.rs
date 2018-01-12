@@ -2092,3 +2092,194 @@ fn decorated_defs() {
     };
     assert_eq!(ast, expected);
 }
+
+#[test]
+fn associativity() {
+    let stream = Lexer::new("1 + 2 + 3 + 4 + 5\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::BinOp {
+                    left: Box::new(Expression::BinOp {
+                        left: Box::new(Expression::BinOp {
+                            left: Box::new(Expression::BinOp {
+                                left: Box::new(Expression::Num {
+                                    n: Number::DecInteger(String::from("1"))
+                                }),
+                                op: Operator::Add,
+                                right: Box::new(Expression::Num {
+                                    n: Number::DecInteger(String::from("2"))
+                                })
+                            }),
+                            op: Operator::Add,
+                            right: Box::new(Expression::Num {
+                                n: Number::DecInteger(String::from("3"))
+                            })
+                        }),
+                        op: Operator::Add,
+                        right: Box::new(Expression::Num {
+                            n: Number::DecInteger(String::from("4"))
+                        })
+                    }),
+                    op: Operator::Add,
+                    right: Box::new(Expression::Num {
+                        n: Number::DecInteger(String::from("5"))
+                    })
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("1 + 2 * 3 + 4\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::BinOp {
+                    left: Box::new(Expression::BinOp {
+                        left: Box::new(Expression::Num {
+                            n: Number::DecInteger(String::from("1"))
+                        }),
+                        op: Operator::Add,
+                        right: Box::new(Expression::BinOp {
+                            left: Box::new(Expression::Num {
+                                n: Number::DecInteger(String::from("2"))
+                            }),
+                            op: Operator::Mult,
+                            right: Box::new(Expression::Num {
+                                n: Number::DecInteger(String::from("3"))
+                            })
+                        }),
+                    }),
+                    op: Operator::Add,
+                    right: Box::new(Expression::Num {
+                        n: Number::DecInteger(String::from("4"))
+                    })
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("1 + 2 | 3 & 4 << 5 ** 6 - 7\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::BinOp {
+                    left: Box::new(Expression::BinOp {
+                        left: Box::new(Expression::Num {
+                            n: Number::DecInteger(String::from("1"))
+                        }),
+                        op: Operator::Add,
+                        right: Box::new(Expression::Num {
+                            n: Number::DecInteger(String::from("2"))
+                        })
+                    }),
+                    op: Operator::BitOr,
+                    right: Box::new(Expression::BinOp {
+                        left: Box::new(Expression::Num {
+                            n: Number::DecInteger(String::from("3"))
+                        }),
+                        op: Operator::BitAnd,
+                        right: Box::new(Expression::BinOp {
+                            left: Box::new(Expression::Num {
+                                n: Number::DecInteger(String::from("4"))
+                            }),
+                            op: Operator::LShift,
+                            right: Box::new(Expression::BinOp {
+                                left: Box::new(Expression::BinOp {
+                                    left: Box::new(Expression::Num {
+                                        n: Number::DecInteger(String::from("5"))
+                                    }),
+                                    op: Operator::Pow,
+                                    right: Box::new(Expression::Num {
+                                        n: Number::DecInteger(String::from("6"))
+                                    })
+                                }),
+                                op: Operator::Sub,
+                                right: Box::new(Expression::Num {
+                                    n: Number::DecInteger(String::from("7"))
+                                })
+                            })
+                        })
+                    })
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn comparison_ops() {
+    let stream = Lexer::new("1 < 2 > 3 == 4 >= 5 <= 6 != 7 in a \
+        not in b is c is not d\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Compare {
+                    left: Box::new(Expression::Num {
+                        n: Number::DecInteger(String::from("1"))
+                    }),
+                    ops: vec![
+                        CmpOperator::LT,
+                        CmpOperator::GT,
+                        CmpOperator::EQ,
+                        CmpOperator::GE,
+                        CmpOperator::LE,
+                        CmpOperator::NE,
+                        CmpOperator::In,
+                        CmpOperator::NotIn,
+                        CmpOperator::Is,
+                        CmpOperator::IsNot
+                    ],
+                    comparators: vec![
+                        Expression::Num {
+                            n: Number::DecInteger(String::from("2"))
+                        },
+                        Expression::Num {
+                            n: Number::DecInteger(String::from("3"))
+                        },
+                        Expression::Num {
+                            n: Number::DecInteger(String::from("4"))
+                        },
+                        Expression::Num {
+                            n: Number::DecInteger(String::from("5"))
+                        },
+                        Expression::Num {
+                            n: Number::DecInteger(String::from("6"))
+                        },
+                        Expression::Num {
+                            n: Number::DecInteger(String::from("7"))
+                        },
+                        Expression::Name {
+                            id: String::from("a"),
+                            ctx: ExprContext::Load
+                        },
+                        Expression::Name {
+                            id: String::from("b"),
+                            ctx: ExprContext::Load
+                        },
+                        Expression::Name {
+                            id: String::from("c"),
+                            ctx: ExprContext::Load
+                        },
+                        Expression::Name {
+                            id: String::from("d"),
+                            ctx: ExprContext::Load
+                        }
+                    ]
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
