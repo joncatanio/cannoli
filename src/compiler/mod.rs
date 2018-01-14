@@ -1,5 +1,9 @@
+pub mod cfg;
+
 use super::parser::ast::Ast;
 use clap::ArgMatches;
+
+use self::cfg::block::Block;
 
 pub fn compile(_ast: Ast, _args: &ArgMatches) {
     /*
