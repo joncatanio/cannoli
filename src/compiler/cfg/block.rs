@@ -1,4 +1,4 @@
-use super::instruction::Instruction;
+use super::inst::Instruction;
 
 #[derive(Debug)]
 pub struct Block {

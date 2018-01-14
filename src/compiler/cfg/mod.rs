@@ -1,5 +1,5 @@
 pub mod block;
-pub mod instruction;
+pub mod inst;
 
 use std::collections::HashMap;
 use self::block::*;
