@@ -16,4 +16,8 @@ impl Block {
             Block { label, insts: vec![] }
         }
     }
+
+    pub fn get_label(&self) -> String {
+        self.label.clone()
+    }
 }
