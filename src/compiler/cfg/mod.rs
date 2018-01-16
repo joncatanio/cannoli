@@ -2,6 +2,8 @@ pub mod block;
 pub mod inst;
 
 use std::collections::HashMap;
+use std::fs::File;
+use std::fmt::Error;
 use self::block::*;
 
 /// Representation of a control flow graph
@@ -38,5 +40,24 @@ impl CFG {
         let label = block.get_label();
         self.block_map.insert(label.clone(), block);
         label
+    }
+
+    pub fn output_llvm(&self, f: &mut File) -> Result<(), Error> {
+        let mut queue = vec![&self.entry_block];
+        let mut visited = vec![&self.entry_block];
+
+        while !queue.is_empty() {
+            if let Some(block) = queue.pop() {
+                self.block_map.get(block).unwrap().output_llvm(f)?;
+
+                for b in self.adjacency_list.get(block).unwrap().iter() {
+                    if !visited.contains(&b) {
+                        queue.push(b);
+                        visited.push(b);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }

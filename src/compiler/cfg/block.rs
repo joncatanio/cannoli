@@ -1,5 +1,8 @@
 use super::inst::Instruction;
 
+use std::fs::File;
+use std::fmt::Error;
+
 #[derive(Debug)]
 pub struct Block {
     label: String,
@@ -19,5 +22,9 @@ impl Block {
 
     pub fn get_label(&self) -> String {
         self.label.clone()
+    }
+
+    pub fn output_llvm(&self, f: &mut File) -> Result<(), Error> {
+        unimplemented!()
     }
 }

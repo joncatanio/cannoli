@@ -9,7 +9,7 @@ pub mod parser;
 pub mod compiler;
 
 use std::io::prelude::*;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 
 use lexer::Lexer;
 use clap::{Arg, App};
@@ -46,5 +46,20 @@ fn main() {
     };
 
     println!("AST: {:?}", ast);
-    compiler::compile(ast, &args);
+    let program = compiler::compile(ast, &args);
+    let result = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(format!("{}.ll", filename));
+    let mut outfile = if result.is_err() {
+        println!("{}", result.unwrap_err());
+        std::process::exit(1);
+    } else {
+        result.unwrap()
+    };
+
+    if let Err(e) = program.output_llvm(&mut outfile) {
+        println!("{}", e);
+        std::process::exit(1);
+    }
 }

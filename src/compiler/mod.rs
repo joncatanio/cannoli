@@ -5,10 +5,11 @@ mod program;
 use clap::ArgMatches;
 use super::parser::ast::*;
 use self::function::Function;
+use self::program::Program;
 use self::cfg::CFG;
 use self::cfg::block::Block;
 
-pub fn compile(ast: Ast, _args: &ArgMatches) {
+pub fn compile(ast: Ast, _args: &ArgMatches) -> Program {
     /*
     match args.value_of("o").unwrap_or("") {
         "1" => unimplemented!(),
@@ -46,7 +47,16 @@ fn gather_main(ast: &Ast) -> Function {
         Ast::Module { ref body } => body
     };
     let cfg = CFG::new();
-    let cur_block = compile_stmts(&cfg, cfg.entry_block.clone(), body);
+    let mut cur_block = cfg.entry_block.clone();
+
+    for stmt in body.iter() {
+        match *stmt {
+            Statement::FunctionDef { .. } | Statement::ClassDef { .. } => (),
+            _ => {
+                cur_block = compile_stmt(&cfg, cur_block, stmt);
+            }
+        }
+    }
 
     // Check if cur_block is equal to exit_block, if not connect them
     unimplemented!()
@@ -55,12 +65,7 @@ fn gather_main(ast: &Ast) -> Function {
 fn compile_stmts(cfg: &CFG, mut cur_block: String, stmts: &Vec<Statement>)
     -> String {
     for stmt in stmts.iter() {
-        match *stmt {
-            Statement::FunctionDef { .. } | Statement::ClassDef { .. } => (),
-            _ => {
-                cur_block = compile_stmt(&cfg, cur_block, stmt);
-            }
-        }
+        cur_block = compile_stmt(&cfg, cur_block, stmt);
     }
 
     cur_block
