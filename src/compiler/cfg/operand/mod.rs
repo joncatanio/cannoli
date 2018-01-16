@@ -1,18 +1,17 @@
-pub mod Register;
-pub mod Immediate;
+pub mod register;
+pub mod immediate;
+
+pub use self::register::Register;
+pub use self::immediate::Immediate;
 
 use std::fmt;
 
-pub trait Operand {}
-
-impl fmt::Debug for Operand {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.fmt(f)
-    }
+pub trait Operand {
+    fn display(&self) -> String;
 }
 
 impl fmt::Display for Operand {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.fmt(f)
+        write!(f, "{}", self.display())
     }
 }

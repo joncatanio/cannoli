@@ -1,6 +1,7 @@
 use std::fmt;
+use super::Operand;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Register {
     label: String
 }
@@ -21,10 +22,14 @@ impl Register {
     }
 }
 
-impl fmt::Display for Operand {
+impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.label)
     }
 }
 
-impl Operand for Register {}
+impl Operand for Register {
+    fn display(&self) -> String {
+        format!("{}", self.label)
+    }
+}

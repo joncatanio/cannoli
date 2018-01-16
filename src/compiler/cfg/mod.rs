@@ -1,10 +1,12 @@
 pub mod block;
 pub mod inst;
+pub mod operand;
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::fmt::Error;
+use std::io;
 use self::block::*;
+use super::inst::Instruction;
 
 /// Representation of a control flow graph
 #[derive(Debug)]
@@ -30,6 +32,8 @@ impl CFG {
             exit_block: exit_block.get_label(),
         };
 
+        cfg.adjacency_list.insert(entry_block.get_label(), vec![]);
+        cfg.adjacency_list.insert(exit_block.get_label(), vec![]);
         cfg.block_map.insert(entry_block.get_label(), entry_block);
         cfg.block_map.insert(exit_block.get_label(), exit_block);
         cfg
@@ -42,7 +46,13 @@ impl CFG {
         label
     }
 
-    pub fn output_llvm(&self, f: &mut File) -> Result<(), Error> {
+    /// Adds an Instruction to the `block` passed in
+    pub fn add_inst(&mut self, block: String, inst: Box<Instruction>) {
+        self.block_map.get_mut(&block).unwrap().add_inst(inst)
+    }
+
+    /// BFS output of CFG blocks
+    pub fn output_llvm(&self, f: &mut File) -> Result<(), io::Error> {
         let mut queue = vec![&self.entry_block];
         let mut visited = vec![&self.entry_block];
 

@@ -1,16 +1,23 @@
-use ::compiler::cfg::register::{Operand, Register};
-use std::fs::File;;
+use std::fs::File;
+use std::io;
+use std::io::Write;
 
-#[derive(Debug)]
+use ::compiler::cfg::operand::{Operand, Register};
+use super::Instruction;
+
 pub struct Arith {
-    result: Register,
-    inst: ArithOp,
-    op1: Operand,
-    op2: Operand
+    pub result: Register,
+    pub inst: String, // TODO change to enum or something
+    pub op1: Box<Operand>,
+    pub op2: Box<Operand>
 }
 
 impl Instruction for Arith {
-    fn output_llvm(&self, f: File) {
-        writeln!(f, "test")
+    fn output_llvm(&self, f: &mut File) -> Result<(), io::Error> {
+        f.write_all(b"test\n")
+    }
+
+    fn debug(&self) -> String {
+        format!("Arith")
     }
 }

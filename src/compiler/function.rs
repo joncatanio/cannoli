@@ -1,15 +1,15 @@
 use super::cfg::CFG;
 use std::fs::File;
-use std::fmt::Error;
+use std::io;
 
 pub struct Function {
     // TODO add `params` and other meta information
-    name: String,
-    graph: CFG
+    pub name: String,
+    pub graph: CFG
 }
 
 impl Function {
-    pub fn output_llvm(&self, f: &mut File) -> Result<(), Error> {
+    pub fn output_llvm(&self, f: &mut File) -> Result<(), io::Error> {
         self.graph.output_llvm(f)
     }
 }

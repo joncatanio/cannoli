@@ -1,7 +1,8 @@
 use super::inst::Instruction;
 
 use std::fs::File;
-use std::fmt::Error;
+use std::io;
+use std::io::Write;
 
 #[derive(Debug)]
 pub struct Block {
@@ -24,7 +25,15 @@ impl Block {
         self.label.clone()
     }
 
-    pub fn output_llvm(&self, f: &mut File) -> Result<(), Error> {
-        unimplemented!()
+    pub fn add_inst(&mut self, inst: Box<Instruction>) {
+        self.insts.push(inst)
+    }
+
+    pub fn output_llvm(&self, f: &mut File) -> Result<(), io::Error> {
+        f.write_all(format!("{}", &self.label).as_bytes())?;
+        for inst in self.insts.iter() {
+            inst.output_llvm(f)?;
+        }
+        Ok(())
     }
 }
