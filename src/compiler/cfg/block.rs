@@ -30,7 +30,7 @@ impl Block {
     }
 
     pub fn output_llvm(&self, f: &mut File) -> Result<(), io::Error> {
-        f.write_all(format!("{}", &self.label).as_bytes())?;
+        f.write_all(format!("{}:\n", &self.label).as_bytes())?;
         for inst in self.insts.iter() {
             inst.output_llvm(f)?;
         }

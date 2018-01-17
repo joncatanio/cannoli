@@ -1,6 +1,8 @@
 pub mod cfg;
 mod function;
 mod program;
+mod types;
+mod util;
 
 use clap::ArgMatches;
 use super::parser::ast::*;
@@ -8,7 +10,7 @@ use self::function::Function;
 use self::program::Program;
 use self::cfg::CFG;
 use self::cfg::inst;
-use self::cfg::operand::{Register, Immediate};
+use self::cfg::operand::{Operand};
 
 pub fn compile(ast: Ast, _args: &ArgMatches) -> Program {
     /*
@@ -62,55 +64,54 @@ fn gather_main(ast: &Ast) -> Function {
 
     // Check if cur_block is equal to exit_block, if not connect them
     // TODO REMOVE BELOW
-    Function { name: "main".to_string(), graph: cfg }
+    Function { name: "main".to_string(), return_type: "i64".to_string(), graph: cfg }
 }
 
 fn compile_stmts(cfg: &mut CFG, mut cur_block: String, stmts: &Vec<Statement>)
     -> String {
     for stmt in stmts.iter() {
-        cur_block = compile_stmt(cfg, cur_block.clone(), stmt);
+        cur_block = compile_stmt(cfg, cur_block, stmt);
     }
 
     cur_block
 }
 
-fn compile_stmt(cfg: &mut CFG, cur_block: String, stmt: &Statement) -> String {
-    match *stmt {
-        Statement::Expr { ref value } =>  {
-            compile_stmt_expr(cfg, cur_block, value)
-        },
-        _ => unimplemented!()
-    }
-}
-
-fn compile_stmt_expr(cfg: &mut CFG, cur_block: String, expr: &Expression)
+fn compile_stmt(cfg: &mut CFG, cur_block: String, stmt: &Statement)
     -> String {
-    let reg = match *expr {
-        Expression::BinOp { .. } => compile_expr_binop(cfg, cur_block.clone(), expr),
+    match *stmt {
+        Statement::Expr { .. } => compile_stmt_expr(cfg, cur_block, stmt),
         _ => unimplemented!()
+    }
+}
+
+fn compile_stmt_expr(cfg: &mut CFG, cur_block: String, stmt: &Statement)
+    -> String {
+    let expr = match *stmt {
+        Statement::Expr { ref value } => value,
+        _ => unreachable!()
     };
+    let reg = compile_expr(cfg, cur_block.clone(), expr);
 
     cur_block
+}
+
+fn compile_expr(cfg: &mut CFG, cur_block: String, expr: &Expression)
+    -> Box<Operand> {
+    match *expr {
+        Expression::BinOp { .. } => compile_expr_binop(cfg, cur_block, expr),
+        Expression::Num { ref n } => util::gen_imm_num(n),
+        _ => unimplemented!()
+    }
 }
 
 fn compile_expr_binop(cfg: &mut CFG, cur_block: String, expr: &Expression)
-    -> Register {
+    -> Box<Operand> {
     let (left, op, right) = match *expr {
         Expression::BinOp { ref left, ref op, ref right } => (left, op, right),
         _ => unreachable!()
     };
 
-    // Get the resulting registers from left/right then generate the bin op
-    // inst and add it to the CFG.
-
-    // TODO REMOVE, THIS IS ONLY TEMPORARY
-    let reg = Register::new();
-    let inst = inst::Arith {
-        result: reg.clone(), inst: "+".to_string(),
-        op1: Box::new(Immediate { value: "1".to_string() }),
-        op2: Box::new(Immediate { value: "2".to_string() })
-    };
-    cfg.add_inst(cur_block, Box::new(inst));
-    reg
-    // TODO REMOVE ABOVE
+    let lft_oper = compile_expr(cfg, cur_block.clone(), left);
+    let rht_oper = compile_expr(cfg, cur_block.clone(), right);
+    util::gen_bin_inst(cfg, cur_block, op, lft_oper, rht_oper)
 }

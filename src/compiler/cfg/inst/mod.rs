@@ -1,5 +1,6 @@
 pub mod arith;
-pub use self::arith::Arith;
+
+pub use self::arith::{Arith, ArithOp};
 
 use std::fs::File;
 use std::fmt;

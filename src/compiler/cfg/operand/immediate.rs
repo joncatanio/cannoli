@@ -1,13 +1,14 @@
 use std::fmt;
 use super::Operand;
+use ::compiler::types::*;
 
 #[derive(Debug)]
 pub struct Immediate {
-    pub value: String
+    value: Type,
 }
 
 impl Immediate {
-    pub fn new(value: String) -> Immediate {
+    pub fn new(value: Type) -> Immediate {
         Immediate { value }
     }
 }
