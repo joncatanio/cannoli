@@ -27,8 +27,7 @@ impl Instruction for Arith {
     fn output_llvm(&self, f: &mut File) -> Result<(), io::Error> {
         match self.inst {
             ArithOp::Add => {
-                // TODO print the types with the immediate vals (op1/op2)
-                write!(f, "\t%{} = call i32 @add(i32 {}, i32 {})\n",
+                write!(f, "\t%{} = call i32 @add({}, {})\n",
                     self.result, self.op1, self.op2)
             },
             _ => unimplemented!()

@@ -29,14 +29,19 @@ pub enum Number {
 
 impl fmt::Display for Number {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let value = match *self {
-            Number::DecInteger(ref s) => s,
-            Number::BinInteger(ref s) => s,
-            Number::OctInteger(ref s) => s,
-            Number::HexInteger(ref s) => s,
-            Number::Float(ref s) => s,
-            Number::Imaginary(ref s) => s,
-        };
-        write!(f, "{}", value)
+        match *self {
+            Number::DecInteger(ref s) =>
+                write!(f, "i32 {}", s),
+            Number::BinInteger(ref s) =>
+                write!(f, "{}", s),
+            Number::OctInteger(ref s) =>
+                write!(f, "{}", s),
+            Number::HexInteger(ref s) =>
+                write!(f, "{}", s),
+            Number::Float(ref s) =>
+                write!(f, "{}", s),
+            Number::Imaginary(ref s) =>
+                write!(f, "{}", s),
+        }
     }
 }

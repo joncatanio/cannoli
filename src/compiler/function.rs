@@ -12,9 +12,10 @@ pub struct Function {
 
 impl Function {
     pub fn output_llvm(&self, f: &mut File) -> Result<(), io::Error> {
-        f.write_all(format!("define {} @{} {{\n", &self.return_type,
+        // TODO add parameters to function signature
+        f.write_all(format!("define {} @{}() {{\n", &self.return_type,
             &self.name).as_bytes())?;
-        self.graph.output_llvm(f);
+        self.graph.output_llvm(f)?;
         f.write_all(format!("}}\n").as_bytes())
     }
 }
