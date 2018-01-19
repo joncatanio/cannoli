@@ -3,7 +3,7 @@ use std::fmt;
 #[derive(Debug, PartialEq, Clone)]
 pub enum Type {
     Str(String),
-    Num { n: Number },
+    Num(Number),
     Object
 }
 
@@ -11,7 +11,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Type::Str(ref s) => write!(f, "{}", s),
-            Type::Num { ref n } => write!(f, "{}", n),
+            Type::Num(ref n) => write!(f, "{}", n),
             Type::Object => write!(f, "object")
         }
     }

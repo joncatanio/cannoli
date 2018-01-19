@@ -18,9 +18,3 @@ impl fmt::Display for Immediate {
         write!(f, "{}", self.value)
     }
 }
-
-impl Operand for Immediate {
-    fn display(&self) -> String {
-        format!("{}", self.value)
-    }
-}

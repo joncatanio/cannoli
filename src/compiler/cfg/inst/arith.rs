@@ -3,8 +3,10 @@ use std::io;
 use std::io::Write;
 
 use ::compiler::cfg::operand::{Operand, Register};
+use ::compiler::arch::llvm::LLVM;
 use super::Instruction;
 
+#[derive(Debug)]
 pub enum ArithOp {
     Add,
     Sub,
@@ -16,14 +18,15 @@ pub enum ArithOp {
     FloorDiv
 }
 
-pub struct Arith {
+#[derive(Debug)]
+pub struct ArithStruct {
     pub result: Register,
     pub inst: ArithOp, // TODO change to enum or something
-    pub op1: Box<Operand>,
-    pub op2: Box<Operand>
+    pub op1: Operand,
+    pub op2: Operand
 }
 
-impl Instruction for Arith {
+impl LLVM for ArithStruct {
     fn output_llvm(&self, f: &mut File) -> Result<(), io::Error> {
         match self.inst {
             ArithOp::Add => {
@@ -32,9 +35,5 @@ impl Instruction for Arith {
             },
             _ => unimplemented!()
         }
-    }
-
-    fn debug(&self) -> String {
-        format!("Arith")
     }
 }

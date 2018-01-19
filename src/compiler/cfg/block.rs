@@ -7,7 +7,7 @@ use std::io::Write;
 #[derive(Debug)]
 pub struct Block {
     label: String,
-    insts: Vec<Box<Instruction>>
+    insts: Vec<Instruction>
 }
 
 impl Block {
@@ -25,7 +25,7 @@ impl Block {
         self.label.clone()
     }
 
-    pub fn add_inst(&mut self, inst: Box<Instruction>) {
+    pub fn add_inst(&mut self, inst: Instruction) {
         self.insts.push(inst)
     }
 

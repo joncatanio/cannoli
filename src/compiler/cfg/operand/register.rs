@@ -27,9 +27,3 @@ impl fmt::Display for Register {
         write!(f, "{}", self.label)
     }
 }
-
-impl Operand for Register {
-    fn display(&self) -> String {
-        format!("{}", self.label)
-    }
-}

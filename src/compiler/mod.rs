@@ -1,4 +1,5 @@
 pub mod cfg;
+mod arch;
 mod function;
 mod program;
 mod types;
@@ -96,7 +97,7 @@ fn compile_stmt_expr(cfg: &mut CFG, cur_block: String, stmt: &Statement)
 }
 
 fn compile_expr(cfg: &mut CFG, cur_block: String, expr: &Expression)
-    -> Box<Operand> {
+    -> Operand {
     match *expr {
         Expression::BinOp { .. } => compile_expr_binop(cfg, cur_block, expr),
         Expression::Num { ref n } => util::gen_imm_num(n),
@@ -105,7 +106,7 @@ fn compile_expr(cfg: &mut CFG, cur_block: String, expr: &Expression)
 }
 
 fn compile_expr_binop(cfg: &mut CFG, cur_block: String, expr: &Expression)
-    -> Box<Operand> {
+    -> Operand {
     let (left, op, right) = match *expr {
         Expression::BinOp { ref left, ref op, ref right } => (left, op, right),
         _ => unreachable!()
