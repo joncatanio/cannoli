@@ -47,7 +47,7 @@ impl CFG {
     }
 
     /// Adds an Instruction to the `block` passed in
-    pub fn add_inst(&mut self, block: String, inst: Box<Instruction>) {
+    pub fn add_inst(&mut self, block: String, inst: Instruction) {
         self.block_map.get_mut(&block).unwrap().add_inst(inst)
     }
 

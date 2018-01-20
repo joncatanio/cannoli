@@ -1,5 +1,4 @@
 use std::fmt;
-use super::Operand;
 use ::compiler::types::*;
 
 #[derive(Debug)]

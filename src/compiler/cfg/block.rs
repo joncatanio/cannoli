@@ -1,4 +1,5 @@
 use super::inst::Instruction;
+use ::compiler::arch::llvm::LLVM;
 
 use std::fs::File;
 use std::io;

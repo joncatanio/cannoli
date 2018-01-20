@@ -1,5 +1,4 @@
 use std::fmt;
-use super::Operand;
 
 #[derive(Debug, Clone)]
 pub struct Register {

@@ -20,7 +20,7 @@ pub fn gen_arith_inst(cfg: &mut CFG, cur_block: String, op: ArithOp,
     let inst = Instruction::Arith(ArithStruct { result: reg.clone(), inst: op,
         op1: lft_oper, op2: rht_oper });
 
-    cfg.add_inst(cur_block, Box::new(inst));
+    cfg.add_inst(cur_block, inst);
     Operand::Reg(reg)
 }
 

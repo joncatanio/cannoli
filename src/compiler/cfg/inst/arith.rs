@@ -4,7 +4,6 @@ use std::io::Write;
 
 use ::compiler::cfg::operand::{Operand, Register};
 use ::compiler::arch::llvm::LLVM;
-use super::Instruction;
 
 #[derive(Debug)]
 pub enum ArithOp {

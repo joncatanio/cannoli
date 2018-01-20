@@ -15,8 +15,8 @@ pub enum Operand {
 impl fmt::Display for Operand {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Reg(r) => write!(f, "{}", r),
-            Imm(i) => write!(f, "{}", i)
+            Operand::Reg(ref r) => write!(f, "{}", r),
+            Operand::Imm(ref i) => write!(f, "{}", i)
         }
     }
 }
