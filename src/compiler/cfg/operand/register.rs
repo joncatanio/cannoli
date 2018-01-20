@@ -2,7 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct Register {
-    label: String
+    pub label: String
 }
 
 impl Register {

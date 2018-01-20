@@ -3,7 +3,7 @@ use ::compiler::types::*;
 
 #[derive(Debug)]
 pub struct Immediate {
-    value: Type,
+    pub value: Type,
 }
 
 impl Immediate {

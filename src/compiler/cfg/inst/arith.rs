@@ -29,7 +29,7 @@ impl LLVM for ArithStruct {
     fn output_llvm(&self, f: &mut File) -> Result<(), io::Error> {
         match self.inst {
             ArithOp::Add => {
-                write!(f, "\t%{} = call i32 @add({}, {})\n",
+                write!(f, "\t%{} = call Type* @add(Type* {}, Type* {})\n",
                     self.result, self.op1, self.op2)
             },
             _ => unimplemented!()
