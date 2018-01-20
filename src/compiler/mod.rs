@@ -100,7 +100,7 @@ fn compile_expr(cfg: &mut CFG, cur_block: String, expr: &Expression)
     -> Operand {
     match *expr {
         Expression::BinOp { .. } => compile_expr_binop(cfg, cur_block, expr),
-        Expression::Num { ref n } => util::gen_imm_num(n),
+        Expression::Num { ref n } => util::gen_imm_num(cfg, cur_block, n),
         _ => unimplemented!()
     }
 }

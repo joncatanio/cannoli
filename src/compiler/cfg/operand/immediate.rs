@@ -1,9 +1,9 @@
 use std::fmt;
 use ::compiler::types::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Immediate {
-    pub value: Type,
+    pub value: Type
 }
 
 impl Immediate {

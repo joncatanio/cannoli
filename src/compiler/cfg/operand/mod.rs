@@ -6,7 +6,7 @@ pub use self::immediate::Immediate;
 
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Operand {
     Reg(Register),
     Imm(Immediate)

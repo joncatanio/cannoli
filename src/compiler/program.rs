@@ -17,10 +17,13 @@ impl Program {
         Ok(())
     }
 
-    /// Forward declaration of functions from the linked library
+    /// Forward declaration of functions and types from the linked library
     fn output_forward_decls(f: &mut File) -> Result<(), io::Error> {
         f.write_all("\
-            declare i32 @add(i32, i32)\n\
+            %union.anon = type { i32 }\n\
+            %struct.Type = type { %union.anon, i32 }\n\n\
+            declare %struct.Type* @add(%struct.Type*, %struct.Type*)\n\
+            declare %struct.Type* @cons_int(i32)\n\
         \n".as_bytes())
     }
 }
