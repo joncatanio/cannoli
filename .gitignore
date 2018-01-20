@@ -1,6 +1,7 @@
 /target/
 **/*.rs.bk
 Cargo.lock
+*.ll
 
 # Ignore Vim swap files
 *.swp
