@@ -1,14 +1,14 @@
-pub mod register;
+pub mod local;
 pub mod immediate;
 
-pub use self::register::Register;
+pub use self::local::Local;
 pub use self::immediate::Immediate;
 
 use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum Operand {
-    Reg(Register),
+    Reg(Local),
     Imm(Immediate)
 }
 

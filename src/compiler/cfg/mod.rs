@@ -5,8 +5,8 @@ pub mod operand;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
+use self::inst::*;
 use self::block::*;
-use super::inst::Instruction;
 
 /// Representation of a control flow graph
 #[derive(Debug)]
@@ -46,9 +46,15 @@ impl CFG {
         label
     }
 
+    /// Connects two nodes by updating the adjacency list, it is directed
+    /// therefore block_from goes to block_to
+    pub fn connect_blocks(&mut self, block_from: &String, block_to: String) {
+        self.adjacency_list.get_mut(block_from).unwrap().push(block_to)
+    }
+
     /// Adds an Instruction to the `block` passed in
-    pub fn add_inst(&mut self, block: String, inst: Instruction) {
-        self.block_map.get_mut(&block).unwrap().add_inst(inst)
+    pub fn add_inst(&mut self, block: &String, inst: Instruction) {
+        self.block_map.get_mut(block).unwrap().add_inst(inst)
     }
 
     /// BFS output of CFG blocks

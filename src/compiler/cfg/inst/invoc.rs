@@ -2,12 +2,12 @@ use std::fs::File;
 use std::io;
 use std::io::Write;
 
-use ::compiler::cfg::operand::{Operand, Register};
+use ::compiler::cfg::operand::{Operand, Local};
 use ::compiler::arch::llvm::LLVM;
 
 #[derive(Debug)]
 pub struct InvocStruct {
-    pub result: Register,
+    pub result: Local,
     pub func_name: String,
     pub args: Vec<Operand>
 }

@@ -19,29 +19,20 @@ impl fmt::Display for Type {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Number {
-    DecInteger(String),
-    BinInteger(String),
-    OctInteger(String),
-    HexInteger(String),
-    Float(String),
+    Integer(i64),
+    Float(f64),
     Imaginary(String)
 }
 
 impl fmt::Display for Number {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Number::DecInteger(ref s) =>
-                write!(f, "i32 {}", s),
-            Number::BinInteger(ref s) =>
-                write!(f, "{}", s),
-            Number::OctInteger(ref s) =>
-                write!(f, "{}", s),
-            Number::HexInteger(ref s) =>
-                write!(f, "{}", s),
-            Number::Float(ref s) =>
-                write!(f, "{}", s),
-            Number::Imaginary(ref s) =>
-                write!(f, "{}", s),
+            Number::Integer(ref val) =>
+                write!(f, "i32 {}", val),
+            Number::Float(ref val) =>
+                write!(f, "float {:.32}", val),
+            Number::Imaginary(ref val) =>
+                write!(f, "{}", val),
         }
     }
 }

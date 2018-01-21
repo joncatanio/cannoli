@@ -10,7 +10,7 @@ use super::parser::ast::*;
 use self::function::Function;
 use self::program::Program;
 use self::cfg::CFG;
-use self::cfg::inst;
+use self::cfg::inst::*;
 use self::cfg::operand::{Operand};
 
 pub fn compile(ast: Ast, _args: &ArgMatches) -> Program {
@@ -63,9 +63,17 @@ fn gather_main(ast: &Ast) -> Function {
         }
     }
 
-    // Check if cur_block is equal to exit_block, if not connect them
-    // TODO REMOVE BELOW
-    Function { name: "main".to_string(), return_type: "i64".to_string(), graph: cfg }
+    let exit_block = cfg.exit_block.clone();
+    if cur_block != exit_block {
+        cfg.connect_blocks(&cur_block, exit_block.clone());
+        cfg.add_inst(&cur_block, Instruction::Branch(
+            BranchStruct::new(None, exit_block.clone(), None)))
+    }
+    // Add the void return to the exit block
+    cfg.add_inst(&exit_block, Instruction::Return(
+        ReturnStruct { return_type: "void".to_string(), value: None }));
+    Function { name: "main".to_string(),
+        return_type: "void".to_string(), graph: cfg }
 }
 
 fn compile_stmts(cfg: &mut CFG, mut cur_block: String, stmts: &Vec<Statement>)

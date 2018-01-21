@@ -28,6 +28,9 @@ fn main() {
             .short("o")
             .takes_value(true)
             .help("Sets the optimization level: [1-3]"))
+        .arg(Arg::with_name("parse")
+            .long("parse")
+            .help("Only parses the input file and prints the AST"))
         .get_matches();
 
     // Open file and read into `contents`
@@ -45,12 +48,17 @@ fn main() {
     } else {
         result.unwrap()
     };
+    if args.is_present("parse") {
+        println!("AST: {:?}", ast);
+        std::process::exit(0);
+    }
 
     println!("AST: {:?}", ast);
     let program = compiler::compile(ast, &args);
     let filename = get_file_prefix(file);
     let result = OpenOptions::new()
         .write(true)
+        .truncate(true)
         .create(true)
         .open(format!("{}.ll", filename));
     let mut outfile = if result.is_err() {

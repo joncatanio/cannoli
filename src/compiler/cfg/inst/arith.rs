@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io;
 use std::io::Write;
 
-use ::compiler::cfg::operand::{Operand, Register};
+use ::compiler::cfg::operand::{Operand, Local};
 use ::compiler::arch::llvm::LLVM;
 
 #[derive(Debug)]
@@ -19,7 +19,7 @@ pub enum ArithOp {
 
 #[derive(Debug)]
 pub struct ArithStruct {
-    pub result: Register,
+    pub result: Local,
     pub inst: ArithOp, // TODO change to enum or something
     pub op1: Operand,
     pub op2: Operand

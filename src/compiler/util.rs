@@ -3,7 +3,9 @@ use ::parser::ast::*;
 use super::types;
 use super::cfg::CFG;
 use super::cfg::inst::*;
-use super::cfg::operand::{Operand, Register, Immediate};
+use super::cfg::operand::{Operand, Local, Immediate};
+
+use std::i64;
 
 /// Consumes the given operand returning the Operand::Reg that represents the
 /// return value of the library call to construct a Type* value.
@@ -21,11 +23,8 @@ pub fn construct_type(cfg: &mut CFG, cur_block: String, op: Operand)
                 },
                 types::Type::Num(ref n) => {
                     let func_name = match *n {
-                        types::Number::DecInteger(_) => "cons_int".to_string(),
-                        types::Number::BinInteger(_) => "cons_int".to_string(),
-                        types::Number::OctInteger(_) => "cons_int".to_string(),
-                        types::Number::HexInteger(_) => "cons_int".to_string(),
-                        types::Number::Float(_) => unimplemented!(),
+                        types::Number::Integer(_) => "cons_int".to_string(),
+                        types::Number::Float(_) => "cons_float".to_string(),
                         types::Number::Imaginary(_) => unimplemented!()
                     };
                     // Construct the type system Type* value that the library
@@ -38,26 +37,33 @@ pub fn construct_type(cfg: &mut CFG, cur_block: String, op: Operand)
     }
 }
 
+/// Converts immediate numerical values into Type::Num values.
+/// Currently, this function returns an Operand::Reg which is the result of
+/// calling the appropriate type constructor in the library.
 pub fn gen_imm_num(cfg: &mut CFG, cur_block: String, num: &Number)
     -> Operand {
-    // TODO convert the bin/oct/hex ints to integers here
     let val = match *num {
         Number::DecInteger(ref s) => {
-            types::Type::Num(types::Number::DecInteger(s.clone()))
+            let val: i64 = s.parse().unwrap();
+            types::Type::Num(types::Number::Integer(val))
         },
         Number::BinInteger(ref s) => {
-            types::Type::Num(types::Number::BinInteger(s.clone()))
+            let val = i64::from_str_radix(&s[2..], 2).unwrap();
+            types::Type::Num(types::Number::Integer(val))
         },
         Number::OctInteger(ref s) => {
-            types::Type::Num(types::Number::OctInteger(s.clone()))
+            let val = i64::from_str_radix(&s[2..], 8).unwrap();
+            types::Type::Num(types::Number::Integer(val))
         },
         Number::HexInteger(ref s) => {
-            types::Type::Num(types::Number::HexInteger(s.clone()))
+            let val = i64::from_str_radix(&s[2..], 16).unwrap();
+            types::Type::Num(types::Number::Integer(val))
         },
-        Number::Float(ref s)      => {
-            types::Type::Num(types::Number::Float(s.clone()))
+        Number::Float(ref s) => {
+            let val: f64 = s.parse().unwrap();
+            types::Type::Num(types::Number::Float(val))
         },
-        Number::Imaginary(ref s)  => {
+        Number::Imaginary(ref s) => {
             types::Type::Num(types::Number::Imaginary(s.clone()))
         }
     };
@@ -77,11 +83,11 @@ pub fn gen_bin_inst(cfg: &mut CFG, cur_block: String, op: &Operator,
 
 pub fn gen_arith_inst(cfg: &mut CFG, cur_block: String, op: ArithOp,
     lft_oper: Operand, rht_oper: Operand) -> Operand {
-    let reg = Register::new();
+    let reg = Local::new();
     let inst = Instruction::Arith(ArithStruct { result: reg.clone(), inst: op,
         op1: lft_oper, op2: rht_oper });
 
-    cfg.add_inst(cur_block, inst);
+    cfg.add_inst(&cur_block, inst);
     Operand::Reg(reg)
 }
 
@@ -90,10 +96,10 @@ pub fn gen_arith_inst(cfg: &mut CFG, cur_block: String, op: ArithOp,
 // the return type of every function will be the Type* value in the library
 pub fn gen_invoc_inst(cfg: &mut CFG, cur_block: String, func_name: String,
     args: Vec<Operand>) -> Operand {
-    let reg = Register::new();
+    let reg = Local::new();
     let inst = Instruction::Invoc(InvocStruct { result: reg.clone(),
         func_name, args });
 
-    cfg.add_inst(cur_block, inst);
+    cfg.add_inst(&cur_block, inst);
     Operand::Reg(reg)
 }

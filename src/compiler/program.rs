@@ -24,6 +24,7 @@ impl Program {
             %struct.Type = type { %union.anon, i32 }\n\n\
             declare %struct.Type* @add(%struct.Type*, %struct.Type*)\n\
             declare %struct.Type* @cons_int(i32)\n\
+            declare %struct.Type* @cons_float(float)\n\
         \n".as_bytes())
     }
 }
