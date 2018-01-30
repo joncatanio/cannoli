@@ -7,8 +7,6 @@ use super::cfg::operand::{Operand, Local, Immediate};
 
 use std::i64;
 
-/// Consumes the given operand returning the Operand::Reg that represents the
-/// return value of the library call to construct a Type* value.
 pub fn construct_type(cfg: &mut CFG, cur_block: String, op: Operand)
     -> Operand {
     // Move from borrowed context in match is not playing nice.
@@ -23,8 +21,8 @@ pub fn construct_type(cfg: &mut CFG, cur_block: String, op: Operand)
                 },
                 types::Type::Num(ref n) => {
                     let func_name = match *n {
-                        types::Number::Integer(_) => "cons_int".to_string(),
-                        types::Number::Float(_) => "cons_float".to_string(),
+                        types::Number::Integer(_) => "".to_string(),
+                        types::Number::Float(_) => "".to_string(),
                         types::Number::Imaginary(_) => unimplemented!()
                     };
                     // Construct the type system Type* value that the library
@@ -37,9 +35,6 @@ pub fn construct_type(cfg: &mut CFG, cur_block: String, op: Operand)
     }
 }
 
-/// Converts immediate numerical values into Type::Num values.
-/// Currently, this function returns an Operand::Reg which is the result of
-/// calling the appropriate type constructor in the library.
 pub fn gen_imm_num(cfg: &mut CFG, cur_block: String, num: &Number)
     -> Operand {
     let val = match *num {

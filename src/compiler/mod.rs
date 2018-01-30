@@ -3,6 +3,7 @@ mod arch;
 mod function;
 mod program;
 mod types;
+mod symtbl;
 mod util;
 
 use clap::ArgMatches;
@@ -12,6 +13,7 @@ use self::program::Program;
 use self::cfg::CFG;
 use self::cfg::inst::*;
 use self::cfg::operand::{Operand};
+use self::symtbl::{SymTbl, Symbol};
 
 pub fn compile(ast: Ast, _args: &ArgMatches) -> Program {
     /*
@@ -33,6 +35,7 @@ fn gather_funcs(ast: &Ast) -> Vec<Function> {
     let body = match *ast {
         Ast::Module { ref body } => body
     };
+    let mut functions = Vec::new();
 
     for stmt in body.iter() {
         match *stmt {
@@ -43,8 +46,7 @@ fn gather_funcs(ast: &Ast) -> Vec<Function> {
         }
     }
 
-    // TODO REMOVE
-    vec![]
+    functions
 }
 
 fn gather_main(ast: &Ast) -> Function {
