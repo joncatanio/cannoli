@@ -9,8 +9,7 @@ pub mod parser;
 pub mod compiler;
 
 use std::io::prelude::*;
-use std::fs::{File, OpenOptions};
-use regex::Regex;
+use std::fs::File;
 
 use lexer::Lexer;
 use clap::{Arg, App};
@@ -34,6 +33,7 @@ fn main() {
         .get_matches();
 
     // Open file and read into `contents`
+    // TODO move this to compiler so imports can be more easily managed
     let file = args.value_of("INPUT").unwrap();
     let mut fp = File::open(file).expect("file not found");
     let mut contents = String::new();
@@ -54,35 +54,6 @@ fn main() {
     }
 
     println!("AST: {:?}", ast);
-    let program = compiler::compile(ast, &args);
-    let filename = get_file_prefix(file);
-    let result = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open(format!("{}.ll", filename));
-    let mut outfile = if result.is_err() {
-        println!("{}", result.unwrap_err());
-        std::process::exit(1);
-    } else {
-        result.unwrap()
-    };
-
-    if let Err(e) = program.output_llvm(&mut outfile) {
-        println!("{}", e);
-        std::process::exit(1);
-    }
-}
-
-fn get_file_prefix(file: &str) -> String {
-    if let Some(caps) = FILENAME_RE.captures(&file) {
-        caps[1].to_string()
-    } else {
-        println!("unsupported filetype for file: {}", file);
-        std::process::exit(1)
-    }
-}
-
-lazy_static! {
-   static ref FILENAME_RE: Regex = Regex::new(r"(.+)\.(py|cannoli)$").unwrap();
+    // Handle errors here
+    compiler::compile(file, ast, &args);
 }
