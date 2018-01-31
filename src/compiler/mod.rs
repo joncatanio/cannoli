@@ -2,13 +2,15 @@ mod util;
 mod errors;
 
 use std::fs::{File, OpenOptions};
-use std::io::Read;
+use std::io::{Read, Write};
 use clap::ArgMatches;
 
 use super::lexer::Lexer;
 use super::parser;
 use super::parser::ast::*;
 use self::errors::CompilerError;
+
+const INDENT: &str = "    ";
 
 // TODO maybe change this back to taking an ast only and when an import is
 // encounter spawn a thread that calls back into cannoli with the new filename
@@ -50,9 +52,60 @@ pub fn compile_file(file: &str, opt_args: Option<&ArgMatches>)
         result.unwrap()
     };
 
-    compile_ast(ast)
+    compile_ast(&mut outfile, ast)
 }
 
-pub fn compile_ast(ast: Ast) -> Result<(), CompilerError> {
-    unimplemented!()
+pub fn compile_ast(outfile: &mut File, ast: Ast) -> Result<(), CompilerError> {
+    output_headers(outfile)?;
+    output_main(outfile, &ast)
+}
+
+fn output_headers(outfile: &mut File) -> Result<(), CompilerError> {
+    outfile.write_all("pub extern cannolib;\n".as_bytes()).unwrap();
+
+    Ok(())
+}
+
+fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
+    let body = match *ast {
+        Ast::Module { ref body } => body
+    };
+
+    outfile.write_all("fn main() {\n".as_bytes()).unwrap();
+
+    for stmt in body.iter() {
+        match *stmt {
+            Statement::FunctionDef { .. } | Statement::ClassDef { .. } => (),
+            _ => output_stmt(outfile, 1, stmt)?
+        }
+    }
+
+    outfile.write_all("}\n".as_bytes()).unwrap();
+    Ok(())
+}
+
+fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    match *stmt {
+        Statement::Expr { .. } => output_stmt_expr(outfile, indent, stmt),
+        _ => unimplemented!()
+    }
+}
+
+fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let expr = match *stmt {
+        Statement::Expr { ref value } => value,
+        _ => unreachable!()
+    };
+
+    outfile.write_all(INDENT.repeat(indent).as_bytes()).unwrap();
+    output_expr(outfile, expr)?;
+    outfile.write_all("\n".as_bytes()).unwrap();
+    Ok(())
+}
+
+fn output_expr(outfile: &mut File, expr: &Expression)
+    -> Result<(), CompilerError> {
+    Ok(())
 }
