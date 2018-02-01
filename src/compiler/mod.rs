@@ -61,7 +61,7 @@ pub fn compile_ast(outfile: &mut File, ast: Ast) -> Result<(), CompilerError> {
 }
 
 fn output_headers(outfile: &mut File) -> Result<(), CompilerError> {
-    outfile.write_all("pub extern cannolib;\n".as_bytes()).unwrap();
+    outfile.write_all("extern crate cannolib;\n".as_bytes()).unwrap();
 
     Ok(())
 }
@@ -84,12 +84,44 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     Ok(())
 }
 
+fn output_stmts(outfile: &mut File, indent: usize, stmts: &Vec<Statement>)
+    -> Result<(), CompilerError> {
+    for stmt in stmts.iter() {
+        output_stmt(outfile, indent, stmt)?;
+    }
+    Ok(())
+}
+
 fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     match *stmt {
+        Statement::If { .. } => output_stmt_if(outfile, indent, stmt),
         Statement::Expr { .. } => output_stmt_expr(outfile, indent, stmt),
         _ => unimplemented!()
     }
+}
+
+fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let (test, body, orelse) = match *stmt {
+        Statement::If { ref test, ref body, ref orelse } =>
+            (test, body, orelse),
+        _ => unreachable!()
+    };
+
+    // guard and decorators
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all("if (".as_bytes()).unwrap();
+    output_expr(outfile, test)?;
+    outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
+
+    // `then` body
+    output_stmts(outfile, indent + 1, body)?;
+
+    // closing decorator
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all("}\n".as_bytes()).unwrap();
+    Ok(())
 }
 
 fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
@@ -101,11 +133,91 @@ fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
 
     outfile.write_all(INDENT.repeat(indent).as_bytes()).unwrap();
     output_expr(outfile, expr)?;
-    outfile.write_all("\n".as_bytes()).unwrap();
+    outfile.write_all(";\n".as_bytes()).unwrap();
     Ok(())
 }
 
 fn output_expr(outfile: &mut File, expr: &Expression)
     -> Result<(), CompilerError> {
+    match *expr {
+        Expression::BinOp { .. } => output_expr_binop(outfile, expr),
+        Expression::Num { ref n } => output_expr_num(outfile, n),
+        Expression::NameConstant { ref value } =>
+            output_expr_name_const(outfile, value),
+        _ => unimplemented!()
+    }
+}
+
+fn output_expr_binop(outfile: &mut File, expr: &Expression)
+    -> Result<(), CompilerError> {
+    let (left, op, right) = match *expr {
+        Expression::BinOp { ref left, ref op, ref right } => (left, op, right),
+        _ => unreachable!()
+    };
+
+    output_expr(outfile, left)?;
+    outfile.write_all(" ".as_bytes()).unwrap();
+    output_operator(outfile, op)?;
+    outfile.write_all(" ".as_bytes()).unwrap();
+    output_expr(outfile, right)?;
+    Ok(())
+}
+
+fn output_expr_num(outfile: &mut File, num: &Number)
+    -> Result<(), CompilerError> {
+    let out_str = match *num {
+        Number::DecInteger(ref s) => {
+            format!("cannolib::cons_int({})", s)
+        },
+        Number::BinInteger(ref s) => {
+            format!("cannolib::cons_int({})", s)
+        },
+        Number::OctInteger(ref s) => {
+            format!("cannolib::cons_int({})", s)
+        },
+        Number::HexInteger(ref s) => {
+            format!("cannolib::cons_int({})", s)
+        },
+        Number::Float(ref s) => {
+            format!("cannolib::cons_float({})", s)
+        },
+        Number::Imaginary(_) => unimplemented!()
+    };
+
+    outfile.write_all(out_str.as_bytes()).unwrap();
+    Ok(())
+}
+
+fn output_expr_name_const(outfile: &mut File, value: &Singleton)
+    -> Result<(), CompilerError> {
+    let out_str = match *value {
+        Singleton::None  => format!("cannolib::Value::None"),
+        Singleton::True  => format!("cannolib::Value::Bool(true)"),
+        Singleton::False => format!("cannolib::Value::Bool(false)"),
+    };
+
+    outfile.write_all(out_str.as_bytes()).unwrap();
+    Ok(())
+}
+
+fn output_operator(outfile: &mut File, op: &Operator)
+    -> Result<(), CompilerError> {
+    let op_str = match *op {
+        Operator::Add => "+",
+        Operator::Sub => "-",
+        Operator::Mult => "*",
+        Operator::MatMult => unimplemented!(),
+        Operator::Div => "/",
+        Operator::Mod => "%",
+        Operator::Pow => unimplemented!(),
+        Operator::LShift => "<<",
+        Operator::RShift => ">>",
+        Operator::BitOr => "|",
+        Operator::BitXor => "^",
+        Operator::BitAnd => "&",
+        Operator::FloorDiv => unimplemented!()
+    };
+
+    outfile.write_all(op_str.as_bytes()).unwrap();
     Ok(())
 }
