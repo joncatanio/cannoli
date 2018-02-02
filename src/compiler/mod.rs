@@ -166,7 +166,36 @@ fn output_expr_binop(outfile: &mut File, expr: &Expression)
 
 fn output_expr_cmp(outfile: &mut File, expr: &Expression)
     -> Result<(), CompilerError> {
-    unimplemented!()
+    let (left, ops, comparators) = match *expr {
+        Expression::Compare { ref left, ref ops, ref comparators } =>
+            (left, ops, comparators),
+        _ => unreachable!()
+    };
+
+    outfile.write_all("cannolib::Value::Bool((".as_bytes()).unwrap();
+    output_expr(outfile, left)?;
+
+    let mut cmp_iter = ops.iter().zip(comparators.iter()).peekable();
+    loop {
+        match cmp_iter.next() {
+            Some((op, comparator)) => {
+                outfile.write_all(" ".as_bytes()).unwrap();
+                output_cmp_operator(outfile, op)?;
+                outfile.write_all(" ".as_bytes()).unwrap();
+                output_expr(outfile, comparator)?;
+                outfile.write_all(")".as_bytes()).unwrap();
+
+                if let Some(_) = cmp_iter.peek() {
+                    outfile.write_all(" && (".as_bytes()).unwrap();
+                    output_expr(outfile, comparator)?;
+                }
+            }
+            None => break
+        }
+    }
+
+    outfile.write_all(")".as_bytes()).unwrap();
+    Ok(())
 }
 
 fn output_expr_num(outfile: &mut File, num: &Number)
@@ -227,6 +256,27 @@ fn output_operator(outfile: &mut File, op: &Operator)
         Operator::BitXor => "^",
         Operator::BitAnd => "&",
         Operator::FloorDiv => unimplemented!()
+    };
+
+    outfile.write_all(op_str.as_bytes()).unwrap();
+    Ok(())
+}
+
+// TODO I'll have to do something interesting for is/in, maybe append a
+// function call to the LHS Value and wrap the RHS in parens.
+fn output_cmp_operator(outfile: &mut File, op: &CmpOperator)
+    -> Result<(), CompilerError> {
+    let op_str = match *op {
+        CmpOperator::EQ => "==",
+        CmpOperator::NE => "!=",
+        CmpOperator::LT => "<",
+        CmpOperator::LE => "<=",
+        CmpOperator::GT => ">",
+        CmpOperator::GE => ">=",
+        CmpOperator::Is => unimplemented!(),
+        CmpOperator::IsNot => unimplemented!(),
+        CmpOperator::In => unimplemented!(),
+        CmpOperator::NotIn => unimplemented!()
     };
 
     outfile.write_all(op_str.as_bytes()).unwrap();
