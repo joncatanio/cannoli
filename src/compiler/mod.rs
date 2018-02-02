@@ -141,6 +141,7 @@ fn output_expr(outfile: &mut File, expr: &Expression)
     -> Result<(), CompilerError> {
     match *expr {
         Expression::BinOp { .. } => output_expr_binop(outfile, expr),
+        Expression::Compare { .. } => output_expr_cmp(outfile, expr),
         Expression::Num { ref n } => output_expr_num(outfile, n),
         Expression::NameConstant { ref value } =>
             output_expr_name_const(outfile, value),
@@ -163,23 +164,33 @@ fn output_expr_binop(outfile: &mut File, expr: &Expression)
     Ok(())
 }
 
+fn output_expr_cmp(outfile: &mut File, expr: &Expression)
+    -> Result<(), CompilerError> {
+    unimplemented!()
+}
+
 fn output_expr_num(outfile: &mut File, num: &Number)
     -> Result<(), CompilerError> {
     let out_str = match *num {
         Number::DecInteger(ref s) => {
-            format!("cannolib::cons_int({})", s)
+            format!("cannolib::Value::Number(\
+                cannolib::NumericType::Integer({}))", s)
         },
         Number::BinInteger(ref s) => {
-            format!("cannolib::cons_int({})", s)
+            format!("cannolib::Value::Number(\
+                cannolib::NumericType::Integer({}))", s)
         },
         Number::OctInteger(ref s) => {
-            format!("cannolib::cons_int({})", s)
+            format!("cannolib::Value::Number(\
+                cannolib::NumericType::Integer({}))", s)
         },
         Number::HexInteger(ref s) => {
-            format!("cannolib::cons_int({})", s)
+            format!("cannolib::Value::Number(\
+                cannolib::NumericType::Integer({}))", s)
         },
         Number::Float(ref s) => {
-            format!("cannolib::cons_float({})", s)
+            format!("cannolib::Value::Number(\
+                cannolib::NumericType::Float({}))", s)
         },
         Number::Imaginary(_) => unimplemented!()
     };
