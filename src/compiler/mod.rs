@@ -120,7 +120,20 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
 
     // closing decorator
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write_all("}\n".as_bytes()).unwrap();
+    outfile.write_all("}".as_bytes()).unwrap();
+
+    // check for elif/else
+    if !orelse.is_empty() {
+        if let Some(&&Statement::If { .. }) = orelse.iter().peekable().peek() {
+            outfile.write_all(" else".as_bytes()).unwrap();
+            output_stmts(outfile, indent, orelse)?;
+        } else {
+            outfile.write_all(" else {\n".as_bytes()).unwrap();
+            output_stmts(outfile, indent + 1, orelse)?;
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write_all("}\n".as_bytes()).unwrap();
+        };
+    }
     Ok(())
 }
 
@@ -140,6 +153,7 @@ fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
 fn output_expr(outfile: &mut File, expr: &Expression)
     -> Result<(), CompilerError> {
     match *expr {
+        Expression::BoolOp { .. } => output_expr_boolop(outfile, expr),
         Expression::BinOp { .. } => output_expr_binop(outfile, expr),
         Expression::Compare { .. } => output_expr_cmp(outfile, expr),
         Expression::Num { ref n } => output_expr_num(outfile, n),
@@ -147,6 +161,34 @@ fn output_expr(outfile: &mut File, expr: &Expression)
             output_expr_name_const(outfile, value),
         _ => unimplemented!()
     }
+}
+
+fn output_expr_boolop(outfile: &mut File, expr: &Expression)
+    -> Result<(), CompilerError> {
+    let (op, values) = match *expr {
+        Expression::BoolOp { ref op, ref values } => (op, values),
+        _ => unreachable!()
+    };
+    let mut expr_iter = values.iter();
+
+    // A BoolOp should always have at least two values, in order to work with
+    // the Rust && and || ops the operands must be `bool`s, each expression
+    // will output their bool value and the entire expression will be wrapped
+    // back into a Value::Bool. There is room for optimization with this
+    // especially if there is a large chain of BoolOps.
+    outfile.write_all("cannolib::Value::Bool((".as_bytes()).unwrap();
+    output_expr(outfile, expr_iter.next().unwrap())?;
+    outfile.write_all(").to_bool()".as_bytes()).unwrap();
+    for expr in expr_iter {
+        outfile.write_all(" ".as_bytes()).unwrap();
+        output_bool_operator(outfile, op)?;
+        outfile.write_all(" (".as_bytes()).unwrap();
+        output_expr(outfile, expr)?;
+        outfile.write_all(").to_bool()".as_bytes()).unwrap();
+    }
+    outfile.write_all(")".as_bytes()).unwrap();
+
+    Ok(())
 }
 
 fn output_expr_binop(outfile: &mut File, expr: &Expression)
@@ -237,6 +279,17 @@ fn output_expr_name_const(outfile: &mut File, value: &Singleton)
     };
 
     outfile.write_all(out_str.as_bytes()).unwrap();
+    Ok(())
+}
+
+fn output_bool_operator(outfile: &mut File, op: &BoolOperator)
+    -> Result<(), CompilerError> {
+    let op_str = match *op {
+        BoolOperator::And => "&&",
+        BoolOperator::Or  => "||",
+    };
+
+    outfile.write_all(op_str.as_bytes()).unwrap();
     Ok(())
 }
 
