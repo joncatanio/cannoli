@@ -153,10 +153,13 @@ fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
 fn output_expr(outfile: &mut File, expr: &Expression)
     -> Result<(), CompilerError> {
     match *expr {
-        Expression::BoolOp { .. } => output_expr_boolop(outfile, expr),
-        Expression::BinOp { .. } => output_expr_binop(outfile, expr),
+        Expression::BoolOp { .. }  => output_expr_boolop(outfile, expr),
+        Expression::BinOp { .. }   => output_expr_binop(outfile, expr),
+        Expression::UnaryOp { .. } => output_expr_unaryop(outfile, expr),
+        Expression::If { .. }      => output_expr_if(outfile, expr),
         Expression::Compare { .. } => output_expr_cmp(outfile, expr),
-        Expression::Num { ref n } => output_expr_num(outfile, n),
+        Expression::Num { ref n }  => output_expr_num(outfile, n),
+        Expression::Str { ref s }  => output_expr_str(outfile, s),
         Expression::NameConstant { ref value } =>
             output_expr_name_const(outfile, value),
         _ => unimplemented!()
@@ -203,6 +206,51 @@ fn output_expr_binop(outfile: &mut File, expr: &Expression)
     output_operator(outfile, op)?;
     outfile.write_all(" ".as_bytes()).unwrap();
     output_expr(outfile, right)?;
+    Ok(())
+}
+
+fn output_expr_unaryop(outfile: &mut File, expr: &Expression)
+    -> Result<(), CompilerError> {
+    let (op, operand) = match *expr {
+        Expression::UnaryOp { ref op, ref operand } => (op, operand),
+        _ => unreachable!()
+    };
+
+    match *op {
+        UnaryOperator::Invert => {
+            outfile.write_all("!".as_bytes()).unwrap();
+            output_expr(outfile, operand)?;
+        },
+        UnaryOperator::Not => {
+            outfile.write_all("(".as_bytes()).unwrap();
+            output_expr(outfile, operand)?;
+            outfile.write_all(").logical_not()".as_bytes()).unwrap();
+        },
+        UnaryOperator::UAdd => unimplemented!(),
+        UnaryOperator::USub => {
+            outfile.write_all("-".as_bytes()).unwrap();
+            output_expr(outfile, operand)?;
+        }
+    }
+    Ok(())
+
+}
+
+fn output_expr_if(outfile: &mut File, expr: &Expression)
+    -> Result<(), CompilerError> {
+    let (test, body, orelse) = match *expr {
+        Expression::If { ref test, ref body, ref orelse } =>
+            (test, body, orelse),
+        _ => unreachable!()
+    };
+
+    outfile.write_all("if (".as_bytes()).unwrap();
+    output_expr(outfile, test)?;
+    outfile.write_all(").to_bool() { ".as_bytes()).unwrap();
+    output_expr(outfile, body)?;
+    outfile.write_all(" } else { ".as_bytes()).unwrap();
+    output_expr(outfile, orelse)?;
+    outfile.write_all(" }".as_bytes()).unwrap();
     Ok(())
 }
 
@@ -265,6 +313,14 @@ fn output_expr_num(outfile: &mut File, num: &Number)
         },
         Number::Imaginary(_) => unimplemented!()
     };
+
+    outfile.write_all(out_str.as_bytes()).unwrap();
+    Ok(())
+}
+
+fn output_expr_str(outfile: &mut File, string: &String)
+    -> Result<(), CompilerError> {
+    let out_str = format!("cannolib::Value::Str(\"{}\".to_string())", string);
 
     outfile.write_all(out_str.as_bytes()).unwrap();
     Ok(())
