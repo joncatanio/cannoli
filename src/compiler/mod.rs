@@ -95,10 +95,44 @@ fn output_stmts(outfile: &mut File, indent: usize, stmts: &Vec<Statement>)
 fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     match *stmt {
-        Statement::If { .. } => output_stmt_if(outfile, indent, stmt),
-        Statement::Expr { .. } => output_stmt_expr(outfile, indent, stmt),
+        Statement::While { .. } => output_stmt_while(outfile, indent, stmt),
+        Statement::If { .. }    => output_stmt_if(outfile, indent, stmt),
+        Statement::Expr { .. }  => output_stmt_expr(outfile, indent, stmt),
         _ => unimplemented!()
     }
+}
+
+fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let (test, body, orelse) = match *stmt {
+        Statement::While { ref test, ref body, ref orelse } =>
+            (test, body, orelse),
+        _ => unreachable!()
+    };
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all("while (".as_bytes()).unwrap();
+    output_expr(outfile, test)?;
+    outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
+
+    output_stmts(outfile, indent + 1, body)?;
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all("}\n".as_bytes()).unwrap();
+
+    if !orelse.is_empty() {
+        // Negate the WHILE condition and add an if-statement
+        outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+        outfile.write_all("if !(".as_bytes()).unwrap();
+        output_expr(outfile, test)?;
+        outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
+
+        output_stmts(outfile, indent + 1, orelse)?;
+
+        outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+        outfile.write_all("}\n".as_bytes()).unwrap();
+    }
+    Ok(())
 }
 
 fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
