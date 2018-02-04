@@ -95,10 +95,28 @@ fn output_stmts(outfile: &mut File, indent: usize, stmts: &Vec<Statement>)
 fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     match *stmt {
+        Statement::FunctionDef { .. } => unimplemented!(),
+        Statement::ClassDef { .. } => unimplemented!(),
+        Statement::Return { .. } => unimplemented!(),
+        Statement::Delete { .. } => unimplemented!(),
+        Statement::Assign { .. } => unimplemented!(),
+        Statement::AugAssign { .. } => unimplemented!(),
+        Statement::AnnAssign { .. } => unimplemented!(),
+        Statement::For { .. } => unimplemented!(),
         Statement::While { .. } => output_stmt_while(outfile, indent, stmt),
         Statement::If { .. }    => output_stmt_if(outfile, indent, stmt),
+        Statement::With { .. } => unimplemented!(),
+        Statement::Raise { .. } => unimplemented!(),
+        Statement::Try { .. } => unimplemented!(),
+        Statement::Assert { .. } => unimplemented!(),
+        Statement::Import { .. } => unimplemented!(),
+        Statement::ImportFrom { .. } => unimplemented!(),
+        Statement::Global { .. } => unimplemented!(),
+        Statement::Nonlocal { .. } => unimplemented!(),
         Statement::Expr { .. }  => output_stmt_expr(outfile, indent, stmt),
-        _ => unimplemented!()
+        Statement::Pass => unimplemented!(),
+        Statement::Break => unimplemented!(),
+        Statement::Continue => unimplemented!()
     }
 }
 
@@ -187,16 +205,33 @@ fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
 fn output_expr(outfile: &mut File, expr: &Expression)
     -> Result<(), CompilerError> {
     match *expr {
-        Expression::BoolOp { .. }  => output_expr_boolop(outfile, expr),
-        Expression::BinOp { .. }   => output_expr_binop(outfile, expr),
+        Expression::BoolOp { .. } => output_expr_boolop(outfile, expr),
+        Expression::BinOp { .. } => output_expr_binop(outfile, expr),
         Expression::UnaryOp { .. } => output_expr_unaryop(outfile, expr),
-        Expression::If { .. }      => output_expr_if(outfile, expr),
+        Expression::Lambda { .. } => unimplemented!(),
+        Expression::If { .. } => output_expr_if(outfile, expr),
+        Expression::Dict { .. } => unimplemented!(),
+        Expression::Set { .. } => unimplemented!(),
+        Expression::ListComp { .. } => unimplemented!(),
+        Expression::SetComp { .. } => unimplemented!(),
+        Expression::DictComp { .. } => unimplemented!(),
+        Expression::Generator { .. } => unimplemented!(),
+        Expression::None => unimplemented!(),
+        Expression::Yield { .. } => unimplemented!(),
+        Expression::YieldFrom { .. } => unimplemented!(),
         Expression::Compare { .. } => output_expr_cmp(outfile, expr),
+        Expression::Call { .. } => unimplemented!(),
         Expression::Num { ref n }  => output_expr_num(outfile, n),
         Expression::Str { ref s }  => output_expr_str(outfile, s),
         Expression::NameConstant { ref value } =>
             output_expr_name_const(outfile, value),
-        _ => unimplemented!()
+        Expression::Ellipsis => unimplemented!(),
+        Expression::Attribute { .. } => unimplemented!(),
+        Expression::Subscript { .. } => unimplemented!(),
+        Expression::Starred { .. } => unimplemented!(),
+        Expression::Name { .. } => unimplemented!(),
+        Expression::List { .. } => unimplemented!(),
+        Expression::Tuple { .. } => unimplemented!()
     }
 }
 
