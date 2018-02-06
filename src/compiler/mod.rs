@@ -160,7 +160,7 @@ fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("while (".as_bytes()).unwrap();
-    output_expr(outfile, test)?;
+    output_expr(outfile, true, test)?;
     outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
 
     output_stmts(outfile, indent + 1, body)?;
@@ -172,7 +172,7 @@ fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
         // Negate the WHILE condition and add an if-statement
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("if !(".as_bytes()).unwrap();
-        output_expr(outfile, test)?;
+        output_expr(outfile, true, test)?;
         outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
 
         output_stmts(outfile, indent + 1, orelse)?;
@@ -194,7 +194,7 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
     // guard and decorators
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("if (".as_bytes()).unwrap();
-    output_expr(outfile, test)?;
+    output_expr(outfile, true, test)?;
     outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
 
     // `then` body
@@ -227,12 +227,17 @@ fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
     };
 
     outfile.write_all(INDENT.repeat(indent).as_bytes()).unwrap();
-    output_expr(outfile, expr)?;
+    output_expr(outfile, true, expr)?;
     outfile.write_all(";\n".as_bytes()).unwrap();
     Ok(())
 }
 
-fn output_expr(outfile: &mut File, expr: &Expression)
+/// Outputs an expression always yielding a Value
+/// # Arguments
+/// * `outfile` - the file that is being written out to
+/// * `clone` - determines whether or not a Expression::Name will be cloned
+/// * `expr` - Expression subtree of the AST that is being output
+fn output_expr(outfile: &mut File, clone: bool, expr: &Expression)
     -> Result<(), CompilerError> {
     match *expr {
         Expression::BoolOp { .. } => output_expr_boolop(outfile, expr),
@@ -259,7 +264,7 @@ fn output_expr(outfile: &mut File, expr: &Expression)
         Expression::Attribute { .. } => unimplemented!(),
         Expression::Subscript { .. } => unimplemented!(),
         Expression::Starred { .. } => unimplemented!(),
-        Expression::Name { .. } => output_expr_name(outfile, expr),
+        Expression::Name { .. } => output_expr_name(outfile, clone, expr),
         Expression::List { .. } => unimplemented!(),
         Expression::Tuple { .. } => unimplemented!()
     }
@@ -279,13 +284,13 @@ fn output_expr_boolop(outfile: &mut File, expr: &Expression)
     // back into a Value::Bool. There is room for optimization with this
     // especially if there is a large chain of BoolOps.
     outfile.write_all("cannolib::Value::Bool((".as_bytes()).unwrap();
-    output_expr(outfile, expr_iter.next().unwrap())?;
+    output_expr(outfile, true, expr_iter.next().unwrap())?;
     outfile.write_all(").to_bool()".as_bytes()).unwrap();
     for expr in expr_iter {
         outfile.write_all(" ".as_bytes()).unwrap();
         output_bool_operator(outfile, op)?;
         outfile.write_all(" (".as_bytes()).unwrap();
-        output_expr(outfile, expr)?;
+        output_expr(outfile, true, expr)?;
         outfile.write_all(").to_bool()".as_bytes()).unwrap();
     }
     outfile.write_all(")".as_bytes()).unwrap();
@@ -300,11 +305,11 @@ fn output_expr_binop(outfile: &mut File, expr: &Expression)
         _ => unreachable!()
     };
 
-    output_expr(outfile, left)?;
+    output_expr(outfile, true, left)?;
     outfile.write_all(" ".as_bytes()).unwrap();
     output_operator(outfile, op)?;
     outfile.write_all(" ".as_bytes()).unwrap();
-    output_expr(outfile, right)?;
+    output_expr(outfile, true, right)?;
     Ok(())
 }
 
@@ -318,17 +323,17 @@ fn output_expr_unaryop(outfile: &mut File, expr: &Expression)
     match *op {
         UnaryOperator::Invert => {
             outfile.write_all("!".as_bytes()).unwrap();
-            output_expr(outfile, operand)?;
+            output_expr(outfile, true, operand)?;
         },
         UnaryOperator::Not => {
             outfile.write_all("(".as_bytes()).unwrap();
-            output_expr(outfile, operand)?;
+            output_expr(outfile, true, operand)?;
             outfile.write_all(").logical_not()".as_bytes()).unwrap();
         },
         UnaryOperator::UAdd => unimplemented!(),
         UnaryOperator::USub => {
             outfile.write_all("-".as_bytes()).unwrap();
-            output_expr(outfile, operand)?;
+            output_expr(outfile, true, operand)?;
         }
     }
     Ok(())
@@ -344,11 +349,11 @@ fn output_expr_if(outfile: &mut File, expr: &Expression)
     };
 
     outfile.write_all("if (".as_bytes()).unwrap();
-    output_expr(outfile, test)?;
+    output_expr(outfile, true, test)?;
     outfile.write_all(").to_bool() { ".as_bytes()).unwrap();
-    output_expr(outfile, body)?;
+    output_expr(outfile, true, body)?;
     outfile.write_all(" } else { ".as_bytes()).unwrap();
-    output_expr(outfile, orelse)?;
+    output_expr(outfile, true, orelse)?;
     outfile.write_all(" }".as_bytes()).unwrap();
     Ok(())
 }
@@ -362,7 +367,7 @@ fn output_expr_cmp(outfile: &mut File, expr: &Expression)
     };
 
     outfile.write_all("cannolib::Value::Bool((".as_bytes()).unwrap();
-    output_expr(outfile, left)?;
+    output_expr(outfile, true, left)?;
 
     let mut cmp_iter = ops.iter().zip(comparators.iter()).peekable();
     loop {
@@ -371,12 +376,12 @@ fn output_expr_cmp(outfile: &mut File, expr: &Expression)
                 outfile.write_all(" ".as_bytes()).unwrap();
                 output_cmp_operator(outfile, op)?;
                 outfile.write_all(" ".as_bytes()).unwrap();
-                output_expr(outfile, comparator)?;
+                output_expr(outfile, true, comparator)?;
                 outfile.write_all(")".as_bytes()).unwrap();
 
                 if let Some(_) = cmp_iter.peek() {
                     outfile.write_all(" && (".as_bytes()).unwrap();
-                    output_expr(outfile, comparator)?;
+                    output_expr(outfile, true, comparator)?;
                 }
             },
             None => break
@@ -395,14 +400,14 @@ fn output_expr_call(outfile: &mut File, expr: &Expression)
         _ => unreachable!()
     };
 
-    output_expr(outfile, func)?;
+    output_expr(outfile, false, func)?;
     outfile.write(".call(vec![".as_bytes()).unwrap();
 
     let mut args_iter = args.iter().peekable();
     loop {
         match args_iter.next() {
             Some(expr) => {
-                output_expr(outfile, expr)?;
+                output_expr(outfile, true, expr)?;
                 if let Some(_) = args_iter.peek() {
                     outfile.write(", ".as_bytes()).unwrap();
                 }
@@ -465,7 +470,7 @@ fn output_expr_name_const(outfile: &mut File, value: &Singleton)
     Ok(())
 }
 
-fn output_expr_name(outfile: &mut File, expr: &Expression)
+fn output_expr_name(outfile: &mut File, clone: bool, expr: &Expression)
     -> Result<(), CompilerError> {
     let (id, _ctx) = match *expr {
         Expression::Name { ref id, ref ctx } => (id, ctx),
@@ -473,7 +478,10 @@ fn output_expr_name(outfile: &mut File, expr: &Expression)
     };
     let mangled_name = util::mangle_name(&id);
 
-    outfile.write_all(format!("{}.clone()", mangled_name).as_bytes()).unwrap();
+    outfile.write_all(mangled_name.as_bytes()).unwrap();
+    if clone {
+        outfile.write_all(".clone()".as_bytes()).unwrap();
+    }
     Ok(())
 }
 
