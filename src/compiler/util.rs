@@ -1,3 +1,5 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use regex::Regex;
 
 pub fn get_file_prefix(file: &str) -> String {
@@ -8,6 +10,17 @@ pub fn get_file_prefix(file: &str) -> String {
         // TODO return CompilerError
         unimplemented!()
     }
+}
+
+/// Takes a string `name` and returns `name` appended with its hash value.
+pub fn mangle_name(name: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    let mut result = name.to_string();
+
+    result.hash(&mut hasher);
+    result.push_str("_");
+    result.push_str(&hasher.finish().to_string());
+    result
 }
 
 lazy_static! {

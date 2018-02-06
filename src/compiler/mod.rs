@@ -61,8 +61,13 @@ pub fn compile_ast(outfile: &mut File, ast: Ast) -> Result<(), CompilerError> {
 }
 
 fn output_headers(outfile: &mut File) -> Result<(), CompilerError> {
-    outfile.write_all("extern crate cannolib;\n".as_bytes()).unwrap();
+    outfile.write("extern crate cannolib;\n".as_bytes()).unwrap();
 
+    // built-in function redefinition to match function mangling
+    outfile.write(format!("use cannolib::builtin::print as {};\n",
+        util::mangle_name("print")).as_bytes()).unwrap();
+
+    outfile.flush().unwrap();
     Ok(())
 }
 
@@ -73,12 +78,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
 
     outfile.write_all("fn main() {\n".as_bytes()).unwrap();
 
-    for stmt in body.iter() {
-        match *stmt {
-            Statement::FunctionDef { .. } | Statement::ClassDef { .. } => (),
-            _ => output_stmt(outfile, 1, stmt)?
-        }
-    }
+    output_stmts(outfile, 1, body)?;
 
     outfile.write_all("}\n".as_bytes()).unwrap();
     Ok(())
@@ -95,7 +95,8 @@ fn output_stmts(outfile: &mut File, indent: usize, stmts: &Vec<Statement>)
 fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     match *stmt {
-        Statement::FunctionDef { .. } => unimplemented!(),
+        Statement::FunctionDef { .. } =>
+            output_stmt_funcdef(outfile, indent, stmt),
         Statement::ClassDef { .. } => unimplemented!(),
         Statement::Return { .. } => unimplemented!(),
         Statement::Delete { .. } => unimplemented!(),
@@ -118,6 +119,35 @@ fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
         Statement::Break => unimplemented!(),
         Statement::Continue => unimplemented!()
     }
+}
+
+fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let (name, args, body, _decorator_list, _returns) = match *stmt {
+        Statement::FunctionDef { ref name, ref args, ref body,
+            ref decorator_list, ref returns } =>
+            (name, args, body, decorator_list, returns),
+        _ => unreachable!()
+    };
+    let mangled_name = util::mangle_name(name);
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write(format!("let {} = |cannoli_func_args: Vec<cannolib::Value>| \
+        -> cannolib::Value {{\n",
+        mangled_name).as_bytes()).unwrap();
+
+    // setup parameters
+    output_parameters(outfile, indent + 1, args)?;
+    output_stmts(outfile, indent + 1, body)?;
+
+    // output default return value (None) and closing bracket
+    outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+    outfile.write("cannolib::Value::None\n".as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write("};\n".as_bytes()).unwrap();
+    outfile.flush().unwrap();
+
+    Ok(())
 }
 
 fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
@@ -220,7 +250,7 @@ fn output_expr(outfile: &mut File, expr: &Expression)
         Expression::Yield { .. } => unimplemented!(),
         Expression::YieldFrom { .. } => unimplemented!(),
         Expression::Compare { .. } => output_expr_cmp(outfile, expr),
-        Expression::Call { .. } => unimplemented!(),
+        Expression::Call { .. } => output_expr_call(outfile, expr),
         Expression::Num { ref n }  => output_expr_num(outfile, n),
         Expression::Str { ref s }  => output_expr_str(outfile, s),
         Expression::NameConstant { ref value } =>
@@ -229,7 +259,7 @@ fn output_expr(outfile: &mut File, expr: &Expression)
         Expression::Attribute { .. } => unimplemented!(),
         Expression::Subscript { .. } => unimplemented!(),
         Expression::Starred { .. } => unimplemented!(),
-        Expression::Name { .. } => unimplemented!(),
+        Expression::Name { .. } => output_expr_name(outfile, expr),
         Expression::List { .. } => unimplemented!(),
         Expression::Tuple { .. } => unimplemented!()
     }
@@ -348,12 +378,40 @@ fn output_expr_cmp(outfile: &mut File, expr: &Expression)
                     outfile.write_all(" && (".as_bytes()).unwrap();
                     output_expr(outfile, comparator)?;
                 }
-            }
+            },
             None => break
         }
     }
 
     outfile.write_all(")".as_bytes()).unwrap();
+    Ok(())
+}
+
+fn output_expr_call(outfile: &mut File, expr: &Expression)
+    -> Result<(), CompilerError> {
+    let (func, args, _keywords) = match *expr {
+        Expression::Call { ref func, ref args, ref keywords } =>
+            (func, args, keywords),
+        _ => unreachable!()
+    };
+
+    output_expr(outfile, func)?;
+    outfile.write("(vec![".as_bytes()).unwrap();
+
+    let mut args_iter = args.iter().peekable();
+    loop {
+        match args_iter.next() {
+            Some(expr) => {
+                output_expr(outfile, expr)?;
+                if let Some(_) = args_iter.peek() {
+                    outfile.write(", ".as_bytes()).unwrap();
+                }
+            },
+            None => break
+        }
+    }
+
+    outfile.write_all("])".as_bytes()).unwrap();
     Ok(())
 }
 
@@ -404,6 +462,46 @@ fn output_expr_name_const(outfile: &mut File, value: &Singleton)
     };
 
     outfile.write_all(out_str.as_bytes()).unwrap();
+    Ok(())
+}
+
+fn output_expr_name(outfile: &mut File, expr: &Expression)
+    -> Result<(), CompilerError> {
+    let (id, _ctx) = match *expr {
+        Expression::Name { ref id, ref ctx } => (id, ctx),
+        _ => unreachable!()
+    };
+    let mangled_name = util::mangle_name(&id);
+
+    outfile.write_all(mangled_name.as_bytes()).unwrap();
+    Ok(())
+}
+
+fn output_parameters(outfile: &mut File, indent: usize, params: &Arguments)
+    -> Result<(), CompilerError> {
+    let (args, _vararg, _kwonlyargs, _kw_defaults, _kwarg, _defaults) =
+    match *params {
+        Arguments::Arguments { ref args, ref vararg, ref kwonlyargs,
+            ref kw_defaults, ref kwarg, ref defaults } => (args, vararg,
+            kwonlyargs, kw_defaults, kwarg, defaults)
+    };
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write("let mut cannoli_func_args_iter = \
+        cannoli_func_args.into_iter();\n".as_bytes()).unwrap();
+    for arg in args.iter() {
+        let (arg_name, _arg_annotation) = match *arg {
+            Arg::Arg { ref arg, ref annotation } => (arg, annotation)
+        };
+        let mangled_name = util::mangle_name(&arg_name);
+
+        outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+        outfile.write(format!("let {} = cannoli_func_args_iter.next()\
+            .expect(\"expected {} positional args\");\n", mangled_name,
+            args.len()).as_bytes()).unwrap();
+    }
+
+    outfile.flush().unwrap();
     Ok(())
 }
 
