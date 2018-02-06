@@ -64,7 +64,7 @@ fn output_headers(outfile: &mut File) -> Result<(), CompilerError> {
     outfile.write("extern crate cannolib;\n".as_bytes()).unwrap();
 
     // built-in function redefinition to match function mangling
-    outfile.write(format!("use cannolib::builtin::print as {};\n",
+    outfile.write(format!("use cannolib::builtin::PRINT as {};\n",
         util::mangle_name("print")).as_bytes()).unwrap();
 
     outfile.flush().unwrap();
@@ -132,8 +132,8 @@ fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
     let mangled_name = util::mangle_name(name);
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write(format!("let {} = |cannoli_func_args: Vec<cannolib::Value>| \
-        -> cannolib::Value {{\n",
+    outfile.write(format!("let {} = cannolib::Value::Function {{ f: \
+        |cannoli_func_args: Vec<cannolib::Value>| -> cannolib::Value {{\n",
         mangled_name).as_bytes()).unwrap();
 
     // setup parameters
@@ -144,7 +144,7 @@ fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
     outfile.write("cannolib::Value::None\n".as_bytes()).unwrap();
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write("};\n".as_bytes()).unwrap();
+    outfile.write("}};\n".as_bytes()).unwrap();
     outfile.flush().unwrap();
 
     Ok(())
@@ -396,7 +396,7 @@ fn output_expr_call(outfile: &mut File, expr: &Expression)
     };
 
     output_expr(outfile, func)?;
-    outfile.write("(vec![".as_bytes()).unwrap();
+    outfile.write(".call(vec![".as_bytes()).unwrap();
 
     let mut args_iter = args.iter().peekable();
     loop {
@@ -473,7 +473,7 @@ fn output_expr_name(outfile: &mut File, expr: &Expression)
     };
     let mangled_name = util::mangle_name(&id);
 
-    outfile.write_all(mangled_name.as_bytes()).unwrap();
+    outfile.write_all(format!("{}.clone()", mangled_name).as_bytes()).unwrap();
     Ok(())
 }
 
