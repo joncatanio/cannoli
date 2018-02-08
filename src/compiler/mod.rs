@@ -100,7 +100,7 @@ fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
         Statement::ClassDef { .. } => unimplemented!(),
         Statement::Return { .. } => unimplemented!(),
         Statement::Delete { .. } => unimplemented!(),
-        Statement::Assign { .. } => unimplemented!(),
+        Statement::Assign { .. } => output_stmt_assign(outfile, indent, stmt),
         Statement::AugAssign { .. } => unimplemented!(),
         Statement::AnnAssign { .. } => unimplemented!(),
         Statement::For { .. } => unimplemented!(),
@@ -147,6 +147,26 @@ fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
     outfile.write("}};\n".as_bytes()).unwrap();
     outfile.flush().unwrap();
 
+    Ok(())
+}
+
+// TODO this will need to be reworked when Objects are implemented, I won't
+// be able to simply redefine the value in Rust, I will have to modify a struct.
+fn output_stmt_assign(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let (targets, value) = match *stmt {
+        Statement::Assign { ref targets, ref value } => (targets, value),
+        _ => unreachable!()
+    };
+
+    for target in targets.iter() {
+        outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+        outfile.write_all("let ".as_bytes()).unwrap();
+        output_expr(outfile, false, target)?;
+        outfile.write_all(" = ".as_bytes()).unwrap();
+        output_expr(outfile, true, value)?;
+        outfile.write_all(";\n".as_bytes()).unwrap();
+    }
     Ok(())
 }
 
