@@ -63,14 +63,6 @@ pub fn compile_ast(outfile: &mut File, ast: Ast) -> Result<(), CompilerError> {
 fn output_headers(outfile: &mut File) -> Result<(), CompilerError> {
     outfile.write("extern crate cannolib;\n".as_bytes()).unwrap();
 
-    // built-in function redefinition to match function mangling
-    outfile.write(format!("use cannolib::builtin::PRINT as {};\n",
-        util::mangle_name("print")).as_bytes()).unwrap();
-
-    // Rust standard lib and other crates
-    outfile.write("use std;\n".as_bytes()).unwrap();
-
-    outfile.flush().unwrap();
     Ok(())
 }
 
@@ -79,7 +71,18 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
         Ast::Module { ref body } => body
     };
 
+    // Setup main function and initialize scope list
     outfile.write_all("fn main() {\n".as_bytes()).unwrap();
+    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all("let cannoli_scope_list: \
+        Vec<std::collections::HashMap<String, cannolib::Value>> = \
+        Vec::new();\n".as_bytes()).unwrap();
+    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all("cannoli_scope_list.push(\
+        cannolib::builtin::get_scope());\n".as_bytes()).unwrap();
+    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all("cannoli_scope_list.push(\
+        std::collections::HashMap::new());\n".as_bytes()).unwrap();
 
     output_stmts(outfile, 1, body)?;
 
@@ -133,12 +136,18 @@ fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
             (name, args, body, decorator_list, returns),
         _ => unreachable!()
     };
-    let mangled_name = util::mangle_name(name);
+    //let mangled_name = util::mangle_name(name);
 
+    // Setup function signature and append to the scope list
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write(format!("let {} = cannolib::Value::Function {{ f: \
-        |cannoli_func_args: Vec<cannolib::Value>| -> cannolib::Value {{\n",
-        mangled_name).as_bytes()).unwrap();
+    outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
+        .insert(\"{}\".to_string(), cannolib::Value::Function {{ f: \
+        |cannoli_scope_list: Vec<std::collections::HashMap<String, \
+        cannolib::Value>>, cannoli_func_args: Vec<cannolib::Value>| \
+        -> cannolib::Value {{\n", name).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+    outfile.write("cannoli_scope_list.push(std::collections::HashMap::new());\n"
+        .as_bytes()).unwrap();
 
     // setup parameters
     output_parameters(outfile, indent + 1, args)?;
@@ -148,7 +157,7 @@ fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
     outfile.write("cannolib::Value::None\n".as_bytes()).unwrap();
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write("}};\n".as_bytes()).unwrap();
+    outfile.write("}});\n".as_bytes()).unwrap();
     outfile.flush().unwrap();
 
     Ok(())
@@ -175,13 +184,24 @@ fn output_stmt_assign(outfile: &mut File, indent: usize, stmt: &Statement)
         _ => unreachable!()
     };
 
+    // For each target determine if it's a Name/Attribute/Subscript and handle
+    // each differently. Name values should be inserted into the current scope
+    // list. Attributes should call a member function on Value that modifies
+    // the object's internal tbl. Subscript should also call a member function
+    // but only work on lists and dicts.
     for target in targets.iter() {
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-        outfile.write_all("let ".as_bytes()).unwrap();
-        output_expr(outfile, false, target)?;
-        outfile.write_all(" = ".as_bytes()).unwrap();
-        output_expr(outfile, true, value)?;
-        outfile.write_all(";\n".as_bytes()).unwrap();
+        match *target {
+            Expression::Name { .. } => {
+                outfile.write_all("cannoli_scope_list.last_mut().unwrap()\
+                    .insert(\"".as_bytes()).unwrap();
+                output_expr(outfile, false, target)?;
+                outfile.write_all("\".to_string(), ".as_bytes()).unwrap();
+                output_expr(outfile, true, value)?;
+                outfile.write_all(");\n".as_bytes()).unwrap();
+            },
+            _ => panic!("unsupported assignment")
+        }
     }
     Ok(())
 }
@@ -271,9 +291,10 @@ fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
 /// Outputs an expression always yielding a Value
 /// # Arguments
 /// * `outfile` - the file that is being written out to
-/// * `clone` - determines whether or not a Expression::Name will be cloned
+/// * `lookup` - determines whether or not an Expression::Name should be
+///              looked up in the scope list
 /// * `expr` - Expression subtree of the AST that is being output
-fn output_expr(outfile: &mut File, clone: bool, expr: &Expression)
+fn output_expr(outfile: &mut File, lookup: bool, expr: &Expression)
     -> Result<(), CompilerError> {
     match *expr {
         Expression::BoolOp { .. } => output_expr_boolop(outfile, expr),
@@ -300,7 +321,7 @@ fn output_expr(outfile: &mut File, clone: bool, expr: &Expression)
         Expression::Attribute { .. } => unimplemented!(),
         Expression::Subscript { .. } => unimplemented!(),
         Expression::Starred { .. } => unimplemented!(),
-        Expression::Name { .. } => output_expr_name(outfile, clone, expr),
+        Expression::Name { .. } => output_expr_name(outfile, lookup, expr),
         Expression::List { .. } => unimplemented!(),
         Expression::Tuple { .. } => unimplemented!()
     }
@@ -436,8 +457,9 @@ fn output_expr_call(outfile: &mut File, expr: &Expression)
         _ => unreachable!()
     };
 
-    output_expr(outfile, false, func)?;
-    outfile.write(".call(vec![".as_bytes()).unwrap();
+    output_expr(outfile, true, func)?;
+    outfile.write(".call(cannoli_scope_list.clone(), vec!["
+        .as_bytes()).unwrap();
 
     let mut args_iter = args.iter().peekable();
     loop {
@@ -506,17 +528,19 @@ fn output_expr_name_const(outfile: &mut File, value: &Singleton)
     Ok(())
 }
 
-fn output_expr_name(outfile: &mut File, clone: bool, expr: &Expression)
+fn output_expr_name(outfile: &mut File, lookup: bool, expr: &Expression)
     -> Result<(), CompilerError> {
     let (id, _ctx) = match *expr {
         Expression::Name { ref id, ref ctx } => (id, ctx),
         _ => unreachable!()
     };
-    let mangled_name = util::mangle_name(&id);
+    //let mangled_name = util::mangle_name(&id);
 
-    outfile.write_all(mangled_name.as_bytes()).unwrap();
-    if clone {
-        outfile.write_all(".clone()".as_bytes()).unwrap();
+    if lookup {
+        outfile.write_all(format!("cannolib::lookup_value(\
+            &cannoli_scope_list, \"{}\").clone()", id).as_bytes()).unwrap();
+    } else {
+        outfile.write_all(id.as_bytes()).unwrap();
     }
     Ok(())
 }
@@ -537,11 +561,12 @@ fn output_parameters(outfile: &mut File, indent: usize, params: &Arguments)
         let (arg_name, _arg_annotation) = match *arg {
             Arg::Arg { ref arg, ref annotation } => (arg, annotation)
         };
-        let mangled_name = util::mangle_name(&arg_name);
+        //let mangled_name = util::mangle_name(&arg_name);
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-        outfile.write(format!("let {} = cannoli_func_args_iter.next()\
-            .expect(\"expected {} positional args\");\n", mangled_name,
+        outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
+            .insert(\"{}\".to_string(), cannoli_func_args_iter.next()\
+            .expect(\"expected {} positional args\"));\n", arg_name,
             args.len()).as_bytes()).unwrap();
     }
 
