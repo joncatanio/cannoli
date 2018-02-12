@@ -74,7 +74,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     // Setup main function and initialize scope list
     outfile.write_all("fn main() {\n".as_bytes()).unwrap();
     outfile.write(INDENT.as_bytes()).unwrap();
-    outfile.write_all("let cannoli_scope_list: \
+    outfile.write_all("let mut cannoli_scope_list: \
         Vec<std::collections::HashMap<String, cannolib::Value>> = \
         Vec::new();\n".as_bytes()).unwrap();
     outfile.write(INDENT.as_bytes()).unwrap();
@@ -142,7 +142,7 @@ fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
         .insert(\"{}\".to_string(), cannolib::Value::Function {{ f: \
-        |cannoli_scope_list: Vec<std::collections::HashMap<String, \
+        |mut cannoli_scope_list: Vec<std::collections::HashMap<String, \
         cannolib::Value>>, cannoli_func_args: Vec<cannolib::Value>| \
         -> cannolib::Value {{\n", name).as_bytes()).unwrap();
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();

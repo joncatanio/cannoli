@@ -1,6 +1,6 @@
 [package]
 name = "cannoli"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jon Catanio <joncatanio@gmail.com>",
    "Aaron Keen <aaronkeen@gmail.com"]
 
