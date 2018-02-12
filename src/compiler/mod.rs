@@ -67,6 +67,9 @@ fn output_headers(outfile: &mut File) -> Result<(), CompilerError> {
     outfile.write(format!("use cannolib::builtin::PRINT as {};\n",
         util::mangle_name("print")).as_bytes()).unwrap();
 
+    // Rust standard lib and other crates
+    outfile.write("use std;\n".as_bytes()).unwrap();
+
     outfile.flush().unwrap();
     Ok(())
 }
@@ -97,7 +100,8 @@ fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
     match *stmt {
         Statement::FunctionDef { .. } =>
             output_stmt_funcdef(outfile, indent, stmt),
-        Statement::ClassDef { .. } => unimplemented!(),
+        Statement::ClassDef { .. } =>
+            output_stmt_classdef(outfile, indent, stmt),
         Statement::Return { .. } => unimplemented!(),
         Statement::Delete { .. } => unimplemented!(),
         Statement::Assign { .. } => output_stmt_assign(outfile, indent, stmt),
@@ -148,6 +152,18 @@ fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
     outfile.flush().unwrap();
 
     Ok(())
+}
+
+fn output_stmt_classdef(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let (name, _, _, body, _) = match *stmt {
+        Statement::ClassDef { ref name, ref bases, ref keywords, ref body,
+            ref decorator_list } => (name, bases, keywords, body,
+            decorator_list),
+        _ => unreachable!()
+    };
+
+    unimplemented!()
 }
 
 // TODO this will need to be reworked when Objects are implemented, I won't
