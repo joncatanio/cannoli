@@ -219,16 +219,14 @@ fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
     // list. Attributes should call a member function on Value that modifies
     // the object's internal tbl. Subscript should also call a member function
     // but only work on lists and dicts.
+    let value_local = output_expr(outfile, indent, value)?;
     for target in targets.iter() {
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         match *target {
-            Expression::Name { .. } => {
-                outfile.write_all(format!("{}.insert(\"", prefix)
-                    .as_bytes()).unwrap();
-                output_expr(outfile, false, target)?;
-                outfile.write_all("\".to_string(), ".as_bytes()).unwrap();
-                output_expr(outfile, true, value)?;
-                outfile.write_all(");\n".as_bytes()).unwrap();
+            Expression::Name { ref id, .. } => {
+                outfile.write_all(format!(
+                    "{}.insert(\"{}\".to_string(), {}.clone());\n", prefix,
+                    id, value_local).as_bytes()).unwrap();
             },
             _ => panic!("unsupported assignment")
         }
@@ -244,10 +242,10 @@ fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
         _ => unreachable!()
     };
 
+    let condition = output_expr(outfile, indent, test)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write_all("while (".as_bytes()).unwrap();
-    output_expr(outfile, true, test)?;
-    outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
+    outfile.write_all(format!("while ({}).to_bool() {{\n",
+        condition).as_bytes()).unwrap();
 
     output_stmts(outfile, false, indent + 1, body)?;
 
@@ -257,9 +255,8 @@ fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
     if !orelse.is_empty() {
         // Negate the WHILE condition and add an if-statement
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-        outfile.write_all("if !(".as_bytes()).unwrap();
-        output_expr(outfile, true, test)?;
-        outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
+        outfile.write_all(format!("if !({}).to_bool() {{\n",
+            condition).as_bytes()).unwrap();
 
         output_stmts(outfile, false, indent + 1, orelse)?;
 
@@ -278,10 +275,10 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
     };
 
     // guard and decorators
+    let test_local = output_expr(outfile, indent, test)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write_all("if (".as_bytes()).unwrap();
-    output_expr(outfile, true, test)?;
-    outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
+    outfile.write_all(format!("if ({}).to_bool() {{\n", test_local)
+        .as_bytes()).unwrap();
 
     // `then` body
     output_stmts(outfile, false, indent + 1, body)?;
@@ -292,15 +289,10 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
 
     // check for elif/else
     if !orelse.is_empty() {
-        if let Some(&&Statement::If { .. }) = orelse.iter().peekable().peek() {
-            outfile.write_all(" else".as_bytes()).unwrap();
-            output_stmts(outfile, false, indent, orelse)?;
-        } else {
-            outfile.write_all(" else {\n".as_bytes()).unwrap();
-            output_stmts(outfile, false, indent + 1, orelse)?;
-            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-            outfile.write_all("}\n".as_bytes()).unwrap();
-        };
+        outfile.write_all(" else {\n".as_bytes()).unwrap();
+        output_stmts(outfile, false, indent + 1, orelse)?;
+        outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+        outfile.write_all("}\n".as_bytes()).unwrap();
     }
     Ok(())
 }
@@ -312,26 +304,29 @@ fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
         _ => unreachable!()
     };
 
+    let expr_local = output_expr(outfile, indent, expr)?;
     outfile.write_all(INDENT.repeat(indent).as_bytes()).unwrap();
-    output_expr(outfile, true, expr)?;
-    outfile.write_all(";\n".as_bytes()).unwrap();
+    outfile.write_all(format!("{};\n", expr_local).as_bytes()).unwrap();
     Ok(())
 }
 
-/// Outputs an expression always yielding a Value
+/// Outputs an expression always yielding a cannolib::Value. This value is
+/// stored into a Local, this is done to avoid borrowing conflicts and should
+/// be mitigated by the optimizer (copy propagation).
+///
 /// # Arguments
 /// * `outfile` - the file that is being written out to
-/// * `lookup` - determines whether or not an Expression::Name should be
-///              looked up in the scope list
+/// * `indent` - defines the indent level for definitions
 /// * `expr` - Expression subtree of the AST that is being output
-fn output_expr(outfile: &mut File, lookup: bool, expr: &Expression)
-    -> Result<(), CompilerError> {
+fn output_expr(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
     match *expr {
-        Expression::BoolOp { .. } => output_expr_boolop(outfile, expr),
-        Expression::BinOp { .. } => output_expr_binop(outfile, expr),
-        Expression::UnaryOp { .. } => output_expr_unaryop(outfile, expr),
+        Expression::BoolOp { .. } => output_expr_boolop(outfile, indent, expr),
+        Expression::BinOp { .. } => output_expr_binop(outfile, indent, expr),
+        Expression::UnaryOp { .. } =>
+            output_expr_unaryop(outfile, indent, expr),
         Expression::Lambda { .. } => unimplemented!(),
-        Expression::If { .. } => output_expr_if(outfile, expr),
+        Expression::If { .. } => output_expr_if(outfile, indent, expr),
         Expression::Dict { .. } => unimplemented!(),
         Expression::Set { .. } => unimplemented!(),
         Expression::ListComp { .. } => unimplemented!(),
@@ -341,162 +336,180 @@ fn output_expr(outfile: &mut File, lookup: bool, expr: &Expression)
         Expression::None => unimplemented!(),
         Expression::Yield { .. } => unimplemented!(),
         Expression::YieldFrom { .. } => unimplemented!(),
-        Expression::Compare { .. } => output_expr_cmp(outfile, expr),
-        Expression::Call { .. } => output_expr_call(outfile, expr),
-        Expression::Num { ref n }  => output_expr_num(outfile, n),
-        Expression::Str { ref s }  => output_expr_str(outfile, s),
+        Expression::Compare { .. } => output_expr_cmp(outfile, indent, expr),
+        Expression::Call { .. } => output_expr_call(outfile, indent, expr),
+        Expression::Num { ref n }  => output_expr_num(outfile, indent, n),
+        Expression::Str { ref s }  => output_expr_str(outfile, indent, s),
         Expression::NameConstant { ref value } =>
-            output_expr_name_const(outfile, value),
+            output_expr_name_const(outfile, indent, value),
         Expression::Ellipsis => unimplemented!(),
         Expression::Attribute { .. } => unimplemented!(),
         Expression::Subscript { .. } => unimplemented!(),
         Expression::Starred { .. } => unimplemented!(),
-        Expression::Name { .. } => output_expr_name(outfile, lookup, expr),
+        Expression::Name { .. } => output_expr_name(outfile, indent, expr),
         Expression::List { .. } => unimplemented!(),
         Expression::Tuple { .. } => unimplemented!()
     }
 }
 
-fn output_expr_boolop(outfile: &mut File, expr: &Expression)
-    -> Result<(), CompilerError> {
+fn output_expr_boolop(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let (op, values) = match *expr {
         Expression::BoolOp { ref op, ref values } => (op, values),
         _ => unreachable!()
     };
     let mut expr_iter = values.iter();
+    let local = Local::new();
 
     // A BoolOp should always have at least two values, in order to work with
     // the Rust && and || ops the operands must be `bool`s, each expression
     // will output their bool value and the entire expression will be wrapped
     // back into a Value::Bool. There is room for optimization with this
     // especially if there is a large chain of BoolOps.
-    outfile.write_all("cannolib::Value::Bool((".as_bytes()).unwrap();
-    output_expr(outfile, true, expr_iter.next().unwrap())?;
-    outfile.write_all(").to_bool()".as_bytes()).unwrap();
-    for expr in expr_iter {
-        outfile.write_all(" ".as_bytes()).unwrap();
-        output_bool_operator(outfile, op)?;
-        outfile.write_all(" (".as_bytes()).unwrap();
-        output_expr(outfile, true, expr)?;
-        outfile.write_all(").to_bool()".as_bytes()).unwrap();
-    }
-    outfile.write_all(")".as_bytes()).unwrap();
+    let expr_local = output_expr(outfile, indent, expr_iter.next().unwrap())?;
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let {} = cannolib::Value::Bool(({}).to_bool()",
+        local, expr_local));
 
-    Ok(())
+    for expr in expr_iter {
+        let expr_local = output_expr(outfile, indent, expr)?;
+        output.push_str(&format!(" {} ({}).to_bool()",
+            output_bool_operator(op)?, expr_local));
+    }
+    output.push_str(");\n");
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
-fn output_expr_binop(outfile: &mut File, expr: &Expression)
-    -> Result<(), CompilerError> {
+fn output_expr_binop(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let (left, op, right) = match *expr {
         Expression::BinOp { ref left, ref op, ref right } => (left, op, right),
         _ => unreachable!()
     };
+    let local = Local::new();
+    let left_local = output_expr(outfile, indent, left)?;
+    let right_local = output_expr(outfile, indent, right)?;
 
-    output_expr(outfile, true, left)?;
-    outfile.write_all(" ".as_bytes()).unwrap();
-    output_operator(outfile, op)?;
-    outfile.write_all(" ".as_bytes()).unwrap();
-    output_expr(outfile, true, right)?;
-    Ok(())
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let {} = {} {} {};\n", local,
+        left_local, output_operator(op)?, right_local));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
-fn output_expr_unaryop(outfile: &mut File, expr: &Expression)
-    -> Result<(), CompilerError> {
+fn output_expr_unaryop(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let (op, operand) = match *expr {
         Expression::UnaryOp { ref op, ref operand } => (op, operand),
         _ => unreachable!()
     };
+    let local = Local::new();
+    let operand_local = output_expr(outfile, indent, operand)?;
 
+    output.push_str(&INDENT.repeat(indent));
     match *op {
         UnaryOperator::Invert => {
-            outfile.write_all("!".as_bytes()).unwrap();
-            output_expr(outfile, true, operand)?;
+            output.push_str(&format!("let {} = !{};\n", local, operand_local));
         },
         UnaryOperator::Not => {
-            outfile.write_all("(".as_bytes()).unwrap();
-            output_expr(outfile, true, operand)?;
-            outfile.write_all(").logical_not()".as_bytes()).unwrap();
+            output.push_str(&format!("let {} = ({}).logical_not();\n", local,
+                operand_local));
         },
         UnaryOperator::UAdd => unimplemented!(),
         UnaryOperator::USub => {
-            outfile.write_all("-".as_bytes()).unwrap();
-            output_expr(outfile, true, operand)?;
+            output.push_str(&format!("let {} = -{};\n", local, operand_local));
         }
     }
-    Ok(())
 
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
-fn output_expr_if(outfile: &mut File, expr: &Expression)
-    -> Result<(), CompilerError> {
+fn output_expr_if(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let (test, body, orelse) = match *expr {
         Expression::If { ref test, ref body, ref orelse } =>
             (test, body, orelse),
         _ => unreachable!()
     };
+    let local = Local::new();
+    let test_local = output_expr(outfile, indent, test)?;
+    let body_local = output_expr(outfile, indent, body)?;
+    let orelse_local = output_expr(outfile, indent, orelse)?;
 
-    outfile.write_all("if (".as_bytes()).unwrap();
-    output_expr(outfile, true, test)?;
-    outfile.write_all(").to_bool() { ".as_bytes()).unwrap();
-    output_expr(outfile, true, body)?;
-    outfile.write_all(" } else { ".as_bytes()).unwrap();
-    output_expr(outfile, true, orelse)?;
-    outfile.write_all(" }".as_bytes()).unwrap();
-    Ok(())
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let {} = if ({}).to_bool() {{ {} }} \
+        else {{ {} }};\n", local, test_local, body_local, orelse_local));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
-fn output_expr_cmp(outfile: &mut File, expr: &Expression)
-    -> Result<(), CompilerError> {
+fn output_expr_cmp(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let (left, ops, comparators) = match *expr {
         Expression::Compare { ref left, ref ops, ref comparators } =>
             (left, ops, comparators),
         _ => unreachable!()
     };
+    let local = Local::new();
+    let left_local = output_expr(outfile, indent, left)?;
 
-    outfile.write_all("cannolib::Value::Bool((".as_bytes()).unwrap();
-    output_expr(outfile, true, left)?;
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let {} = cannolib::Value::Bool(({}", local,
+        left_local));
 
     let mut cmp_iter = ops.iter().zip(comparators.iter()).peekable();
     loop {
         match cmp_iter.next() {
             Some((op, comparator)) => {
-                outfile.write_all(" ".as_bytes()).unwrap();
-                output_cmp_operator(outfile, op)?;
-                outfile.write_all(" ".as_bytes()).unwrap();
-                output_expr(outfile, true, comparator)?;
-                outfile.write_all(")".as_bytes()).unwrap();
+                let cmp_local = output_expr(outfile, indent, comparator)?;
+                output.push_str(&format!(" {} {})", output_cmp_operator(op)?,
+                    cmp_local));
 
                 if let Some(_) = cmp_iter.peek() {
-                    outfile.write_all(" && (".as_bytes()).unwrap();
-                    output_expr(outfile, true, comparator)?;
+                    let cmp_local = output_expr(outfile, indent, comparator)?;
+                    output.push_str(&format!(" && ({}", cmp_local));
                 }
             },
             None => break
         }
     }
+    output.push_str(");\n");
 
-    outfile.write_all(")".as_bytes()).unwrap();
-    Ok(())
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
-fn output_expr_call(outfile: &mut File, expr: &Expression)
-    -> Result<(), CompilerError> {
+fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let (func, args, _keywords) = match *expr {
         Expression::Call { ref func, ref args, ref keywords } =>
             (func, args, keywords),
         _ => unreachable!()
     };
+    let local = Local::new();
 
+    output.push_str(&INDENT.repeat(indent));
     match **func {
         Expression::Attribute { ref value, ref attr, .. } => {
-            output_expr(outfile, true, value)?;
-            outfile.write(format!(".call_member(\"{}\", \
-                cannoli_scope_list.clone(), vec![", attr).as_bytes()).unwrap();
+            let value_local = output_expr(outfile, indent, value)?;
+            output.push_str(&format!("let {} = {}.call_member(\"{}\", \
+                cannoli_scope_list.clone(), vec![", local, value_local, attr));
         },
         _ => {
-            output_expr(outfile, true, func)?;
-            outfile.write(".call(cannoli_scope_list.clone(), vec!["
-                .as_bytes()).unwrap();
+            let func_local = output_expr(outfile, indent, func)?;
+            output.push_str(&format!("let {} = {}.call(cannoli_scope_list\
+                .clone(), vec![", local, func_local));
         }
     }
 
@@ -504,21 +517,25 @@ fn output_expr_call(outfile: &mut File, expr: &Expression)
     loop {
         match args_iter.next() {
             Some(expr) => {
-                output_expr(outfile, true, expr)?;
+                let expr_local = output_expr(outfile, indent, expr)?;
+                output.push_str(&format!("{}", expr_local));
+
                 if let Some(_) = args_iter.peek() {
-                    outfile.write(", ".as_bytes()).unwrap();
+                    output.push_str(", ");
                 }
             },
             None => break
         }
     }
+    output.push_str("]);\n");
 
-    outfile.write_all("])".as_bytes()).unwrap();
-    Ok(())
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
-fn output_expr_num(outfile: &mut File, num: &Number)
-    -> Result<(), CompilerError> {
+fn output_expr_num(outfile: &mut File, indent: usize, num: &Number)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let out_str = match *num {
         Number::DecInteger(ref s) => {
             format!("cannolib::Value::Number(\
@@ -542,46 +559,60 @@ fn output_expr_num(outfile: &mut File, num: &Number)
         },
         Number::Imaginary(_) => unimplemented!()
     };
+    let local = Local::new();
 
-    outfile.write_all(out_str.as_bytes()).unwrap();
-    Ok(())
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let {} = {};\n", local, out_str));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
-fn output_expr_str(outfile: &mut File, string: &String)
-    -> Result<(), CompilerError> {
+fn output_expr_str(outfile: &mut File, indent: usize, string: &String)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let out_str = format!("cannolib::Value::Str(\"{}\".to_string())", string);
+    let local = Local::new();
 
-    outfile.write_all(out_str.as_bytes()).unwrap();
-    Ok(())
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let {} = {};\n", local, out_str));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
-fn output_expr_name_const(outfile: &mut File, value: &Singleton)
-    -> Result<(), CompilerError> {
+fn output_expr_name_const(outfile: &mut File, indent: usize, value: &Singleton)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let out_str = match *value {
         Singleton::None  => format!("cannolib::Value::None"),
         Singleton::True  => format!("cannolib::Value::Bool(true)"),
         Singleton::False => format!("cannolib::Value::Bool(false)"),
     };
+    let local = Local::new();
 
-    outfile.write_all(out_str.as_bytes()).unwrap();
-    Ok(())
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let {} = {};\n", local, out_str));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
-fn output_expr_name(outfile: &mut File, lookup: bool, expr: &Expression)
-    -> Result<(), CompilerError> {
+fn output_expr_name(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
     let (id, _ctx) = match *expr {
         Expression::Name { ref id, ref ctx } => (id, ctx),
         _ => unreachable!()
     };
-    //let mangled_name = util::mangle_name(&id);
+    let local = Local::new();
 
-    if lookup {
-        outfile.write_all(format!("cannolib::lookup_value(cannoli_scope_list\
-            .clone(), \"{}\").clone()", id).as_bytes()).unwrap();
-    } else {
-        outfile.write_all(id.as_bytes()).unwrap();
-    }
-    Ok(())
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let {} = cannolib::lookup_value(\
+        cannoli_scope_list.clone(), \"{}\").clone();\n", local, id));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
 }
 
 fn output_parameters(outfile: &mut File, indent: usize, params: &Arguments)
@@ -613,19 +644,17 @@ fn output_parameters(outfile: &mut File, indent: usize, params: &Arguments)
     Ok(())
 }
 
-fn output_bool_operator(outfile: &mut File, op: &BoolOperator)
-    -> Result<(), CompilerError> {
+fn output_bool_operator(op: &BoolOperator)
+    -> Result<String, CompilerError> {
     let op_str = match *op {
         BoolOperator::And => "&&",
         BoolOperator::Or  => "||",
     };
-
-    outfile.write_all(op_str.as_bytes()).unwrap();
-    Ok(())
+    Ok(op_str.to_string())
 }
 
-fn output_operator(outfile: &mut File, op: &Operator)
-    -> Result<(), CompilerError> {
+fn output_operator(op: &Operator)
+    -> Result<String, CompilerError> {
     let op_str = match *op {
         Operator::Add => "+",
         Operator::Sub => "-",
@@ -641,15 +670,13 @@ fn output_operator(outfile: &mut File, op: &Operator)
         Operator::BitAnd => "&",
         Operator::FloorDiv => unimplemented!()
     };
-
-    outfile.write_all(op_str.as_bytes()).unwrap();
-    Ok(())
+    Ok(op_str.to_string())
 }
 
 // TODO I'll have to do something interesting for is/in, maybe append a
 // function call to the LHS Value and wrap the RHS in parens.
-fn output_cmp_operator(outfile: &mut File, op: &CmpOperator)
-    -> Result<(), CompilerError> {
+fn output_cmp_operator(op: &CmpOperator)
+    -> Result<String, CompilerError> {
     let op_str = match *op {
         CmpOperator::EQ => "==",
         CmpOperator::NE => "!=",
@@ -662,7 +689,5 @@ fn output_cmp_operator(outfile: &mut File, op: &CmpOperator)
         CmpOperator::In => unimplemented!(),
         CmpOperator::NotIn => unimplemented!()
     };
-
-    outfile.write_all(op_str.as_bytes()).unwrap();
-    Ok(())
+    Ok(op_str.to_string())
 }
