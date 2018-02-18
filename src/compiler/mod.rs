@@ -1,5 +1,6 @@
 mod util;
 mod errors;
+mod local;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -9,6 +10,7 @@ use super::lexer::Lexer;
 use super::parser;
 use super::parser::ast::*;
 use self::errors::CompilerError;
+use self::local::Local;
 
 const INDENT: &str = "    ";
 
@@ -84,30 +86,31 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     outfile.write_all("cannoli_scope_list.push(\
         std::collections::HashMap::new());\n".as_bytes()).unwrap();
 
-    output_stmts(outfile, 1, body)?;
+    output_stmts(outfile, false, 1, body)?;
 
     outfile.write_all("}\n".as_bytes()).unwrap();
     Ok(())
 }
 
-fn output_stmts(outfile: &mut File, indent: usize, stmts: &Vec<Statement>)
-    -> Result<(), CompilerError> {
+fn output_stmts(outfile: &mut File, class_scope: bool, indent: usize,
+    stmts: &Vec<Statement>) -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
-        output_stmt(outfile, indent, stmt)?;
+        output_stmt(outfile, class_scope, indent, stmt)?;
     }
     Ok(())
 }
 
-fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt(outfile: &mut File, class_scope: bool, indent: usize,
+    stmt: &Statement) -> Result<(), CompilerError> {
     match *stmt {
-        Statement::FunctionDef { .. } =>
-            output_stmt_funcdef(outfile, indent, stmt),
-        Statement::ClassDef { .. } =>
-            output_stmt_classdef(outfile, indent, stmt),
+        Statement::FunctionDef { .. } => output_stmt_funcdef(outfile,
+            class_scope, indent, stmt),
+        Statement::ClassDef { .. } => output_stmt_classdef(outfile,
+            indent, stmt),
         Statement::Return { .. } => unimplemented!(),
         Statement::Delete { .. } => unimplemented!(),
-        Statement::Assign { .. } => output_stmt_assign(outfile, indent, stmt),
+        Statement::Assign { .. } => output_stmt_assign(outfile,
+            class_scope, indent, stmt),
         Statement::AugAssign { .. } => unimplemented!(),
         Statement::AnnAssign { .. } => unimplemented!(),
         Statement::For { .. } => unimplemented!(),
@@ -128,8 +131,8 @@ fn output_stmt(outfile: &mut File, indent: usize, stmt: &Statement)
     }
 }
 
-fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt_funcdef(outfile: &mut File, class_scope: bool, indent: usize,
+    stmt: &Statement) -> Result<(), CompilerError> {
     let (name, args, body, _decorator_list, _returns) = match *stmt {
         Statement::FunctionDef { ref name, ref args, ref body,
             ref decorator_list, ref returns } =>
@@ -137,21 +140,28 @@ fn output_stmt_funcdef(outfile: &mut File, indent: usize, stmt: &Statement)
         _ => unreachable!()
     };
     //let mangled_name = util::mangle_name(name);
+    let mut prefix = String::new();
+
+    if class_scope {
+        prefix.push_str("cannoli_object_tbl");
+    } else {
+        prefix.push_str("cannoli_scope_list.last_mut().unwrap()");
+    }
 
     // Setup function signature and append to the scope list
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
-        .insert(\"{}\".to_string(), cannolib::Value::Function {{ f: \
+    outfile.write(format!("{}.insert(\"{}\".to_string(), \
+        cannolib::Value::Function {{ f: \
         |mut cannoli_scope_list: Vec<std::collections::HashMap<String, \
         cannolib::Value>>, cannoli_func_args: Vec<cannolib::Value>| \
-        -> cannolib::Value {{\n", name).as_bytes()).unwrap();
+        -> cannolib::Value {{\n", prefix, name).as_bytes()).unwrap();
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
     outfile.write("cannoli_scope_list.push(std::collections::HashMap::new());\n"
         .as_bytes()).unwrap();
 
     // setup parameters
     output_parameters(outfile, indent + 1, args)?;
-    output_stmts(outfile, indent + 1, body)?;
+    output_stmts(outfile, false, indent + 1, body)?;
 
     // output default return value (None) and closing bracket
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
@@ -172,17 +182,37 @@ fn output_stmt_classdef(outfile: &mut File, indent: usize, stmt: &Statement)
         _ => unreachable!()
     };
 
-    unimplemented!()
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write("let mut cannoli_object_tbl = \
+        std::collections::HashMap::new();\n".as_bytes()).unwrap();
+
+    output_stmts(outfile, true, indent, body)?;
+
+    // Add the new class definition to the current scope table
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap().insert(\
+        \"{}\".to_string(), cannolib::Value::Object {{ class_name: \"{}\"\
+        .to_string(), tbl: cannoli_object_tbl }});\n", name, name)
+        .as_bytes()).unwrap();
+
+    Ok(())
 }
 
 // TODO this will need to be reworked when Objects are implemented, I won't
 // be able to simply redefine the value in Rust, I will have to modify a struct.
-fn output_stmt_assign(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
+    stmt: &Statement) -> Result<(), CompilerError> {
     let (targets, value) = match *stmt {
         Statement::Assign { ref targets, ref value } => (targets, value),
         _ => unreachable!()
     };
+    let mut prefix = String::new();
+
+    if class_scope {
+        prefix.push_str("cannoli_object_tbl");
+    } else {
+        prefix.push_str("cannoli_scope_list.last_mut().unwrap()");
+    }
 
     // For each target determine if it's a Name/Attribute/Subscript and handle
     // each differently. Name values should be inserted into the current scope
@@ -193,8 +223,8 @@ fn output_stmt_assign(outfile: &mut File, indent: usize, stmt: &Statement)
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         match *target {
             Expression::Name { .. } => {
-                outfile.write_all("cannoli_scope_list.last_mut().unwrap()\
-                    .insert(\"".as_bytes()).unwrap();
+                outfile.write_all(format!("{}.insert(\"", prefix)
+                    .as_bytes()).unwrap();
                 output_expr(outfile, false, target)?;
                 outfile.write_all("\".to_string(), ".as_bytes()).unwrap();
                 output_expr(outfile, true, value)?;
@@ -219,7 +249,7 @@ fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
     output_expr(outfile, true, test)?;
     outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
 
-    output_stmts(outfile, indent + 1, body)?;
+    output_stmts(outfile, false, indent + 1, body)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
@@ -231,7 +261,7 @@ fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
         output_expr(outfile, true, test)?;
         outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
 
-        output_stmts(outfile, indent + 1, orelse)?;
+        output_stmts(outfile, false, indent + 1, orelse)?;
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("}\n".as_bytes()).unwrap();
@@ -254,7 +284,7 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
     outfile.write_all(").to_bool() {\n".as_bytes()).unwrap();
 
     // `then` body
-    output_stmts(outfile, indent + 1, body)?;
+    output_stmts(outfile, false, indent + 1, body)?;
 
     // closing decorator
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -264,10 +294,10 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
     if !orelse.is_empty() {
         if let Some(&&Statement::If { .. }) = orelse.iter().peekable().peek() {
             outfile.write_all(" else".as_bytes()).unwrap();
-            output_stmts(outfile, indent, orelse)?;
+            output_stmts(outfile, false, indent, orelse)?;
         } else {
             outfile.write_all(" else {\n".as_bytes()).unwrap();
-            output_stmts(outfile, indent + 1, orelse)?;
+            output_stmts(outfile, false, indent + 1, orelse)?;
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
             outfile.write_all("}\n".as_bytes()).unwrap();
         };
@@ -457,9 +487,18 @@ fn output_expr_call(outfile: &mut File, expr: &Expression)
         _ => unreachable!()
     };
 
-    output_expr(outfile, true, func)?;
-    outfile.write(".call(cannoli_scope_list.clone(), vec!["
-        .as_bytes()).unwrap();
+    match **func {
+        Expression::Attribute { ref value, ref attr, .. } => {
+            output_expr(outfile, true, value)?;
+            outfile.write(format!(".call_member(\"{}\", \
+                cannoli_scope_list.clone(), vec![", attr).as_bytes()).unwrap();
+        },
+        _ => {
+            output_expr(outfile, true, func)?;
+            outfile.write(".call(cannoli_scope_list.clone(), vec!["
+                .as_bytes()).unwrap();
+        }
+    }
 
     let mut args_iter = args.iter().peekable();
     loop {
@@ -537,8 +576,8 @@ fn output_expr_name(outfile: &mut File, lookup: bool, expr: &Expression)
     //let mangled_name = util::mangle_name(&id);
 
     if lookup {
-        outfile.write_all(format!("cannolib::lookup_value(\
-            &cannoli_scope_list, \"{}\").clone()", id).as_bytes()).unwrap();
+        outfile.write_all(format!("cannolib::lookup_value(cannoli_scope_list\
+            .clone(), \"{}\").clone()", id).as_bytes()).unwrap();
     } else {
         outfile.write_all(id.as_bytes()).unwrap();
     }
