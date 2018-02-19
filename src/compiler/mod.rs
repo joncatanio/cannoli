@@ -249,11 +249,18 @@ fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
 
     output_stmts(outfile, false, indent + 1, body)?;
 
+    // update the condition variable
+    let loop_cond = output_expr(outfile, indent + 1, test)?;
+    outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+    outfile.write_all(format!("{} = {};\n", condition, loop_cond)
+        .as_bytes()).unwrap();
+
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
 
     if !orelse.is_empty() {
         // Negate the WHILE condition and add an if-statement
+        let condition = output_expr(outfile, indent, test)?;
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all(format!("if !({}).to_bool() {{\n",
             condition).as_bytes()).unwrap();
@@ -304,9 +311,7 @@ fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
         _ => unreachable!()
     };
 
-    let expr_local = output_expr(outfile, indent, expr)?;
-    outfile.write_all(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write_all(format!("{};\n", expr_local).as_bytes()).unwrap();
+    output_expr(outfile, indent, expr)?;
     Ok(())
 }
 
@@ -369,8 +374,8 @@ fn output_expr_boolop(outfile: &mut File, indent: usize, expr: &Expression)
     // especially if there is a large chain of BoolOps.
     let expr_local = output_expr(outfile, indent, expr_iter.next().unwrap())?;
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let {} = cannolib::Value::Bool(({}).to_bool()",
-        local, expr_local));
+    output.push_str(&format!("let mut {} = cannolib::Value::Bool(({})\
+        .to_bool()", local, expr_local));
 
     for expr in expr_iter {
         let expr_local = output_expr(outfile, indent, expr)?;
@@ -395,7 +400,7 @@ fn output_expr_binop(outfile: &mut File, indent: usize, expr: &Expression)
     let right_local = output_expr(outfile, indent, right)?;
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let {} = {} {} {};\n", local,
+    output.push_str(&format!("let mut {} = {} {} {};\n", local,
         left_local, output_operator(op)?, right_local));
 
     outfile.write_all(output.as_bytes()).unwrap();
@@ -415,15 +420,17 @@ fn output_expr_unaryop(outfile: &mut File, indent: usize, expr: &Expression)
     output.push_str(&INDENT.repeat(indent));
     match *op {
         UnaryOperator::Invert => {
-            output.push_str(&format!("let {} = !{};\n", local, operand_local));
+            output.push_str(&format!("let mut {} = !{};\n", local,
+                operand_local));
         },
         UnaryOperator::Not => {
-            output.push_str(&format!("let {} = ({}).logical_not();\n", local,
-                operand_local));
+            output.push_str(&format!("let mut {} = ({}).logical_not();\n",
+                local, operand_local));
         },
         UnaryOperator::UAdd => unimplemented!(),
         UnaryOperator::USub => {
-            output.push_str(&format!("let {} = -{};\n", local, operand_local));
+            output.push_str(&format!("let mut {} = -{};\n", local,
+                operand_local));
         }
     }
 
@@ -445,7 +452,7 @@ fn output_expr_if(outfile: &mut File, indent: usize, expr: &Expression)
     let orelse_local = output_expr(outfile, indent, orelse)?;
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let {} = if ({}).to_bool() {{ {} }} \
+    output.push_str(&format!("let mut {} = if ({}).to_bool() {{ {} }} \
         else {{ {} }};\n", local, test_local, body_local, orelse_local));
 
     outfile.write_all(output.as_bytes()).unwrap();
@@ -464,7 +471,7 @@ fn output_expr_cmp(outfile: &mut File, indent: usize, expr: &Expression)
     let left_local = output_expr(outfile, indent, left)?;
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let {} = cannolib::Value::Bool(({}", local,
+    output.push_str(&format!("let mut {} = cannolib::Value::Bool(({}", local,
         left_local));
 
     let mut cmp_iter = ops.iter().zip(comparators.iter()).peekable();
@@ -503,12 +510,12 @@ fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
     match **func {
         Expression::Attribute { ref value, ref attr, .. } => {
             let value_local = output_expr(outfile, indent, value)?;
-            output.push_str(&format!("let {} = {}.call_member(\"{}\", \
+            output.push_str(&format!("let mut {} = {}.call_member(\"{}\", \
                 cannoli_scope_list.clone(), vec![", local, value_local, attr));
         },
         _ => {
             let func_local = output_expr(outfile, indent, func)?;
-            output.push_str(&format!("let {} = {}.call(cannoli_scope_list\
+            output.push_str(&format!("let mut {} = {}.call(cannoli_scope_list\
                 .clone(), vec![", local, func_local));
         }
     }
@@ -562,7 +569,7 @@ fn output_expr_num(outfile: &mut File, indent: usize, num: &Number)
     let local = Local::new();
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let {} = {};\n", local, out_str));
+    output.push_str(&format!("let mut {} = {};\n", local, out_str));
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
@@ -575,7 +582,7 @@ fn output_expr_str(outfile: &mut File, indent: usize, string: &String)
     let local = Local::new();
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let {} = {};\n", local, out_str));
+    output.push_str(&format!("let mut {} = {};\n", local, out_str));
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
@@ -592,7 +599,7 @@ fn output_expr_name_const(outfile: &mut File, indent: usize, value: &Singleton)
     let local = Local::new();
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let {} = {};\n", local, out_str));
+    output.push_str(&format!("let mut {} = {};\n", local, out_str));
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
@@ -608,7 +615,7 @@ fn output_expr_name(outfile: &mut File, indent: usize, expr: &Expression)
     let local = Local::new();
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let {} = cannolib::lookup_value(\
+    output.push_str(&format!("let mut {} = cannolib::lookup_value(\
         cannoli_scope_list.clone(), \"{}\").clone();\n", local, id));
 
     outfile.write_all(output.as_bytes()).unwrap();
