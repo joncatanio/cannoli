@@ -188,6 +188,12 @@ fn output_stmt_classdef(outfile: &mut File, indent: usize, stmt: &Statement)
 
     output_stmts(outfile, true, indent, body)?;
 
+    // Add meta information into the table
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write(format!("cannoli_object_tbl.insert(\"__class__\"\
+        .to_string(), cannolib::Value::Str(\"{}\".to_string()));\n",
+        name).as_bytes()).unwrap();
+
     // Add the new class definition to the current scope table
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap().insert(\
