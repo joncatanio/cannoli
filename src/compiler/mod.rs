@@ -351,7 +351,7 @@ fn output_expr(outfile: &mut File, indent: usize, expr: &Expression)
         Expression::NameConstant { ref value } =>
             output_expr_name_const(outfile, indent, value),
         Expression::Ellipsis => unimplemented!(),
-        Expression::Attribute { .. } => unimplemented!(),
+        Expression::Attribute { .. } => output_expr_attr(outfile, indent, expr),
         Expression::Subscript { .. } => unimplemented!(),
         Expression::Starred { .. } => unimplemented!(),
         Expression::Name { .. } => output_expr_name(outfile, indent, expr),
@@ -604,6 +604,25 @@ fn output_expr_name_const(outfile: &mut File, indent: usize, value: &Singleton)
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = {};\n", local, out_str));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
+}
+
+fn output_expr_attr(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
+    let (value, attr, _ctx) = match *expr {
+        Expression::Attribute { ref value, ref attr, ref ctx } =>
+            (value, attr, ctx),
+        _ => unreachable!()
+    };
+    let local = Local::new();
+    let value_local = output_expr(outfile, indent, value)?;
+
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let mut {} = {}.get_attr(\"{}\");\n", local,
+        value_local, attr));
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
