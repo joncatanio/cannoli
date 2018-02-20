@@ -191,15 +191,12 @@ fn output_stmt_classdef(outfile: &mut File, indent: usize, stmt: &Statement)
     // Add the new class definition to the current scope table
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap().insert(\
-        \"{}\".to_string(), cannolib::Value::Object {{ class_name: \"{}\"\
-        .to_string(), tbl: cannoli_object_tbl }});\n", name, name)
-        .as_bytes()).unwrap();
+        \"{}\".to_string(), cannolib::Value::Class {{ tbl: cannoli_object_tbl \
+        }});\n", name).as_bytes()).unwrap();
 
     Ok(())
 }
 
-// TODO this will need to be reworked when Objects are implemented, I won't
-// be able to simply redefine the value in Rust, I will have to modify a struct.
 fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
     stmt: &Statement) -> Result<(), CompilerError> {
     let (targets, value) = match *stmt {
@@ -221,12 +218,18 @@ fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
     // but only work on lists and dicts.
     let value_local = output_expr(outfile, indent, value)?;
     for target in targets.iter() {
-        outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         match *target {
             Expression::Name { ref id, .. } => {
+                outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
                 outfile.write_all(format!(
-                    "{}.insert(\"{}\".to_string(), {}.clone());\n", prefix,
+                    "{}.insert(\"{}\".to_string(), {});\n", prefix,
                     id, value_local).as_bytes()).unwrap();
+            },
+            Expression::Attribute { ref value, ref attr, .. } => {
+                let base_local = output_expr(outfile, indent, value)?;
+                outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+                outfile.write_all(format!("cannolib::attr_assign({}, \"{}\", {}\
+                    );\n", base_local, attr, value_local).as_bytes()).unwrap();
             },
             _ => panic!("unsupported assignment")
         }
@@ -510,8 +513,9 @@ fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
     match **func {
         Expression::Attribute { ref value, ref attr, .. } => {
             let value_local = output_expr(outfile, indent, value)?;
-            output.push_str(&format!("let mut {} = {}.call_member(\"{}\", \
-                cannoli_scope_list.clone(), vec![", local, value_local, attr));
+            output.push_str(&format!("let mut {} = cannolib::call_member({}, \
+                \"{}\", cannoli_scope_list.clone(), vec![", local,
+                value_local, attr));
         },
         _ => {
             let func_local = output_expr(outfile, indent, func)?;
@@ -616,7 +620,7 @@ fn output_expr_name(outfile: &mut File, indent: usize, expr: &Expression)
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = cannolib::lookup_value(\
-        cannoli_scope_list.clone(), \"{}\").clone();\n", local, id));
+        &cannoli_scope_list, \"{}\");\n", local, id));
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
