@@ -361,7 +361,7 @@ fn output_expr(outfile: &mut File, indent: usize, expr: &Expression)
         Expression::Subscript { .. } => unimplemented!(),
         Expression::Starred { .. } => unimplemented!(),
         Expression::Name { .. } => output_expr_name(outfile, indent, expr),
-        Expression::List { .. } => unimplemented!(),
+        Expression::List { .. } => output_expr_list(outfile, indent, expr),
         Expression::Tuple { .. } => unimplemented!()
     }
 }
@@ -646,6 +646,34 @@ fn output_expr_name(outfile: &mut File, indent: usize, expr: &Expression)
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = cannolib::lookup_value(\
         &cannoli_scope_list, \"{}\");\n", local, id));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
+}
+
+fn output_expr_list(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
+    let (elts, _ctx) = match *expr {
+        Expression::List { ref elts, ref ctx } => (elts, ctx),
+        _ => unreachable!()
+    };
+    let local = Local::new();
+
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let mut cannoli_list_builder = Vec::new();\n"));
+
+    for elt in elts.iter() {
+        let elt_local = output_expr(outfile, indent, elt)?;
+
+        output.push_str(&INDENT.repeat(indent));
+        output.push_str(&format!("cannoli_list_builder.push({});\n",
+            elt_local));
+    }
+
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let mut {} = cannolib::create_list(\
+        cannoli_list_builder);\n", local));
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
