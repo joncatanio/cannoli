@@ -29,7 +29,7 @@ fn main() {
         .get_matches();
 
     let file = args.value_of("INPUT").unwrap();
-    let result = compiler::compile_file(file, Some(&args));
+    let result = compiler::compile_file(file, true, Some(&args));
     if result.is_err() {
         println!("{}", result.unwrap_err());
         std::process::exit(1);

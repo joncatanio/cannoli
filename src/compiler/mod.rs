@@ -16,7 +16,7 @@ const INDENT: &str = "    ";
 
 // TODO maybe change this back to taking an ast only and when an import is
 // encounter spawn a thread that calls back into cannoli with the new filename
-pub fn compile_file(file: &str, opt_args: Option<&ArgMatches>)
+pub fn compile_file(file: &str, is_main: bool, opt_args: Option<&ArgMatches>)
     -> Result<(), CompilerError> {
     let mut fp = File::open(file).expect("file not found");
     let mut contents = String::new();
@@ -54,12 +54,13 @@ pub fn compile_file(file: &str, opt_args: Option<&ArgMatches>)
         result.unwrap()
     };
 
-    compile_ast(&mut outfile, ast)
-}
-
-pub fn compile_ast(outfile: &mut File, ast: Ast) -> Result<(), CompilerError> {
-    output_headers(outfile)?;
-    output_main(outfile, &ast)
+    output_headers(&mut outfile)?;
+    if is_main {
+        output_main(&mut outfile, &ast)
+    } else {
+        // TODO create output_module() and call it
+        unimplemented!()
+    }
 }
 
 fn output_headers(outfile: &mut File) -> Result<(), CompilerError> {
@@ -85,6 +86,10 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     outfile.write(INDENT.as_bytes()).unwrap();
     outfile.write_all("cannoli_scope_list.push(\
         std::collections::HashMap::new());\n".as_bytes()).unwrap();
+    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all("cannoli_scope_list.last_mut().unwrap().insert(\
+        \"__name__\".to_string(), cannolib::Value::Str(\"__main__\"\
+        .to_string()));\n".as_bytes()).unwrap();
 
     output_stmts(outfile, false, 1, body)?;
 
