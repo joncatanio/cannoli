@@ -6,7 +6,7 @@ authors = ["Jon Catanio <joncatanio@gmail.com>",
 
 [dependencies]
 unicode-segmentation = "0.1.2"
-unicode_names = { git = 'https://github.com/antifuchs/unicode_names', branch = 'fix-for-rust-1-10' }
+unicode_names = { git = 'https://github.com/joncatanio/unicode_names', branch = 'fix-for-rust-1-24' }
 regex = "0.1.41"
 lazy_static = "0.1.15"
 clap = "2.29.0"
