@@ -2,6 +2,7 @@ mod util;
 mod errors;
 mod local;
 
+use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use clap::ArgMatches;
@@ -40,27 +41,41 @@ pub fn compile_file(file: &str, is_main: bool, opt_args: Option<&ArgMatches>)
         }
     }
 
-    println!("AST: {:?}", ast);
-    // Create output file and pass it to compile
-    let filename = util::get_file_prefix(file);
-    let result = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open(format!("{}.rs", filename));
-    let mut outfile = if result.is_err() {
-        return Err(CompilerError::IOError(format!("{:?}", result)));
+    // Create output file and pass it to compile if the source file has
+    // been modified after the compiled file (if one exists)
+    let filename = &format!("{}.rs", util::get_file_prefix(file));
+    let src_time = fs::metadata(file).unwrap().modified().unwrap();
+    let out_time = if let Ok(out_meta) = fs::metadata(filename) {
+        out_meta.modified().unwrap()
     } else {
-        result.unwrap()
+        src_time.clone()
     };
 
-    output_headers(&mut outfile)?;
-    if is_main {
-        output_main(&mut outfile, &ast)
-    } else {
-        // TODO create output_module() and call it
-        unimplemented!()
+    // duration_since returns Ok() if src_time is later than or at the same
+    // time as out_time, returns Err() if out_time is later than src_time
+    if let Ok(_) = src_time.duration_since(out_time) {
+        println!("COMPILING");
+        let result = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(filename);
+        let mut outfile = if result.is_err() {
+            return Err(CompilerError::IOError(format!("{:?}", result)));
+        } else {
+            result.unwrap()
+        };
+
+        output_headers(&mut outfile)?;
+        if is_main {
+            return output_main(&mut outfile, &ast);
+        } else {
+            // TODO create output_module() and call it
+            unimplemented!()
+        }
     }
+
+    Ok(())
 }
 
 fn output_headers(outfile: &mut File) -> Result<(), CompilerError> {
