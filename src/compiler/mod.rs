@@ -43,7 +43,8 @@ pub fn compile_file(file: &str, is_main: bool, opt_args: Option<&ArgMatches>)
 
     // Create output file and pass it to compile if the source file has
     // been modified after the compiled file (if one exists)
-    let filename = &format!("{}.rs", util::get_file_prefix(file));
+    let prefix = util::get_file_prefix(file);
+    let filename = &format!("{}.rs", prefix);
     let src_time = fs::metadata(file).unwrap().modified().unwrap();
     let out_time = if let Ok(out_meta) = fs::metadata(filename) {
         out_meta.modified().unwrap()
@@ -70,8 +71,7 @@ pub fn compile_file(file: &str, is_main: bool, opt_args: Option<&ArgMatches>)
         if is_main {
             return output_main(&mut outfile, &ast);
         } else {
-            // TODO create output_module() and call it
-            unimplemented!()
+            return output_module(&mut outfile, prefix, &ast);
         }
     }
 
@@ -112,6 +112,40 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     Ok(())
 }
 
+fn output_module(outfile: &mut File, mod_name: String, ast: &Ast)
+    -> Result<(), CompilerError> {
+    let body = match *ast {
+        Ast::Module { ref body } => body
+    };
+
+    // Import module will return a Value::Object, this will be assigned to
+    // the module name in the caller's scope
+    outfile.write_all("pub fn import_module() -> cannolib::Value {\n"
+        .as_bytes()).unwrap();
+    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all("let mut cannoli_scope_list: \
+        Vec<std::collections::HashMap<String, cannolib::Value>> = \
+        Vec::new();\n".as_bytes()).unwrap();
+    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all("cannoli_scope_list.push(\
+        cannolib::builtin::get_scope());\n".as_bytes()).unwrap();
+    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all("cannoli_scope_list.push(\
+        std::collections::HashMap::new());\n".as_bytes()).unwrap();
+    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap().insert(\
+        \"__name__\".to_string(), cannolib::Value::Str(\"{}\"\
+        .to_string()));\n", mod_name).as_bytes()).unwrap();
+
+    output_stmts(outfile, false, 1, body)?;
+
+    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all("cannolib::create_obj(cannoli_scope_list.last()\
+        .unwrap().clone())".as_bytes()).unwrap();
+    outfile.write_all("}\n".as_bytes()).unwrap();
+    Ok(())
+}
+
 fn output_stmts(outfile: &mut File, class_scope: bool, indent: usize,
     stmts: &Vec<Statement>) -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
@@ -140,7 +174,7 @@ fn output_stmt(outfile: &mut File, class_scope: bool, indent: usize,
         Statement::Raise { .. } => unimplemented!(),
         Statement::Try { .. } => unimplemented!(),
         Statement::Assert { .. } => unimplemented!(),
-        Statement::Import { .. } => unimplemented!(),
+        Statement::Import { .. } => output_stmt_import(outfile, indent, stmt),
         Statement::ImportFrom { .. } => unimplemented!(),
         Statement::Global { .. } => unimplemented!(),
         Statement::Nonlocal { .. } => unimplemented!(),
@@ -330,6 +364,37 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("}\n".as_bytes()).unwrap();
     }
+    Ok(())
+}
+
+fn output_stmt_import(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let names = match *stmt {
+        Statement::Import { ref names } => names,
+        _ => unreachable!()
+    };
+
+    for name in names.iter() {
+        let (name, asname) = match *name {
+            Alias::Alias { ref name, ref asname } => (name, asname)
+        };
+        let alias = match *asname {
+            Some(ref alias) => alias,
+            None => name
+        };
+
+        // Compile the module if necessary
+        let filename = &format!("{}.py", name);
+        compile_file(filename, false, None)?;
+
+        outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+        outfile.write(format!("use {};\n", name).as_bytes()).unwrap();
+        outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+        outfile.write(format!("cannoli_scope_list.last_mut().unwrap().insert(\
+            \"{}\".to_string(), {}::import_module());\n", alias, name)
+            .as_bytes()).unwrap();
+    }
+
     Ok(())
 }
 

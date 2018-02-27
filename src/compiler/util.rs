@@ -11,5 +11,5 @@ pub fn get_file_prefix(file: &str) -> String {
 }
 
 lazy_static! {
-   static ref FILENAME_RE: Regex = Regex::new(r"(.+)\.(py|cannoli)$").unwrap();
+   static ref FILENAME_RE: Regex = Regex::new(r"(.+)\.py$").unwrap();
 }
