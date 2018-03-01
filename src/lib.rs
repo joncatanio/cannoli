@@ -1,4 +1,4 @@
-#[macro_use(lazy_static)]
+#[macro_use]
 extern crate lazy_static;
 extern crate regex;
 extern crate unicode_names;

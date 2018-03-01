@@ -2,9 +2,10 @@ mod util;
 mod errors;
 mod local;
 
-use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+use std::sync::Mutex;
+use std::collections::HashSet;
 use clap::ArgMatches;
 
 use super::lexer::Lexer;
@@ -15,10 +16,81 @@ use self::local::Local;
 
 const INDENT: &str = "    ";
 
-// TODO maybe change this back to taking an ast only and when an import is
-// encounter spawn a thread that calls back into cannoli with the new filename
-pub fn compile_file(file: &str, is_main: bool, opt_args: Option<&ArgMatches>)
+// Needed global mutable variables that could represent compilation state, I
+// didn't want to do it this way but have no time for a refactor.
+lazy_static! {
+    /// Vector that manages what modules need to be compiled
+    static ref MOD_QUEUE: Mutex<Vec<String>> = Mutex::new(vec![]);
+    /// HashSet of all modules that have already been compiled
+    static ref MOD_IMPORTS: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    /// Path to the root directory of the src files determined by the main mod
+    static ref SRC_ROOT: Mutex<String> = Mutex::new(String::new());
+}
+
+pub fn compile(file: &str, opt_args: Option<&ArgMatches>)
     -> Result<(), CompilerError> {
+    let (src_root, module) = util::get_file_prefix(file)?;
+    *SRC_ROOT.lock().unwrap() = src_root;
+
+    let mut filename = "main.rs".to_string();
+    filename.insert_str(0, &*SRC_ROOT.lock().unwrap());
+
+    let result = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(filename);
+    let mut outfile = if result.is_err() {
+        return Err(CompilerError::IOError(format!("{:?}", result)));
+    } else {
+        result.unwrap()
+    };
+
+    // Write out the simple 'main.rs' file contents
+    outfile.write_all(format!("extern crate cannolib;\nmod cannoli_mods;\n\n\
+        fn main() {{\n{}cannoli_mods::main::execute()\n}}", INDENT)
+        .as_bytes()).unwrap();
+
+    // Output all modules to 'cannoli_mods.rs'
+    let mut filename = "cannoli_mods.rs".to_string();
+    filename.insert_str(0, &*SRC_ROOT.lock().unwrap());
+
+    let result = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(filename);
+    let mut outfile = if result.is_err() {
+        return Err(CompilerError::IOError(format!("{:?}", result)));
+    } else {
+        result.unwrap()
+    };
+
+    output_headers(&mut outfile)?;
+
+    let mut is_main = true;
+    MOD_QUEUE.lock().unwrap().push(module);
+    loop {
+        let modules = MOD_QUEUE.lock().unwrap().clone();
+
+        MOD_QUEUE.lock().unwrap().clear();
+        if modules.is_empty() {
+            break
+        }
+
+        for module in modules.iter() {
+            compile_module(&mut outfile, &module, is_main, opt_args)?;
+            is_main = false
+        }
+    }
+
+    Ok(())
+}
+
+pub fn compile_module(outfile: &mut File, module: &str, is_main: bool,
+    opt_args: Option<&ArgMatches>) -> Result<(), CompilerError> {
+    let mut file = format!("{}.py", module);
+    file.insert_str(0, &*SRC_ROOT.lock().unwrap());
     let mut fp = File::open(file).expect("file not found");
     let mut contents = String::new();
     fp.read_to_string(&mut contents)
@@ -35,47 +107,17 @@ pub fn compile_file(file: &str, is_main: bool, opt_args: Option<&ArgMatches>)
 
     // Manage arguments if present
     if let Some(args) = opt_args {
-        if args.is_present("parse") {
+        if is_main && args.is_present("parse") {
             println!("AST: {:?}", ast);
             return Ok(())
         }
     }
 
-    // Create output file and pass it to compile if the source file has
-    // been modified after the compiled file (if one exists)
-    let prefix = util::get_file_prefix(file);
-    let filename = &format!("{}.rs", prefix);
-    let src_time = fs::metadata(file).unwrap().modified().unwrap();
-    let out_time = if let Ok(out_meta) = fs::metadata(filename) {
-        out_meta.modified().unwrap()
+    if is_main {
+        return output_main(outfile, &ast);
     } else {
-        src_time.clone()
-    };
-
-    // duration_since returns Ok() if src_time is later than or at the same
-    // time as out_time, returns Err() if out_time is later than src_time
-    if let Ok(_) = src_time.duration_since(out_time) {
-        println!("COMPILING");
-        let result = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(filename);
-        let mut outfile = if result.is_err() {
-            return Err(CompilerError::IOError(format!("{:?}", result)));
-        } else {
-            result.unwrap()
-        };
-
-        output_headers(&mut outfile)?;
-        if is_main {
-            return output_main(&mut outfile, &ast);
-        } else {
-            return output_module(&mut outfile, prefix, &ast);
-        }
+        return output_module(outfile, module, &ast);
     }
-
-    Ok(())
 }
 
 fn output_headers(outfile: &mut File) -> Result<(), CompilerError> {
@@ -90,29 +132,37 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     };
 
     // Setup main function and initialize scope list
-    outfile.write_all("fn main() {\n".as_bytes()).unwrap();
-    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write_all("pub mod main {\n".as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
+    outfile.write_all("use cannolib;\n".as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
+    outfile.write_all("use std;\n".as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
+    outfile.write_all("pub fn execute() {\n".as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("let mut cannoli_scope_list: \
         Vec<std::collections::HashMap<String, cannolib::Value>> = \
         Vec::new();\n".as_bytes()).unwrap();
-    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("cannoli_scope_list.push(\
         cannolib::builtin::get_scope());\n".as_bytes()).unwrap();
-    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("cannoli_scope_list.push(\
         std::collections::HashMap::new());\n".as_bytes()).unwrap();
-    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("cannoli_scope_list.last_mut().unwrap().insert(\
         \"__name__\".to_string(), cannolib::Value::Str(\"__main__\"\
         .to_string()));\n".as_bytes()).unwrap();
 
-    output_stmts(outfile, false, 1, body)?;
+    output_stmts(outfile, false, 2, body)?;
 
+    outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
+    outfile.write_all("}\n".as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
     Ok(())
 }
 
-fn output_module(outfile: &mut File, mod_name: String, ast: &Ast)
+fn output_module(outfile: &mut File, module: &str, ast: &Ast)
     -> Result<(), CompilerError> {
     let body = match *ast {
         Ast::Module { ref body } => body
@@ -135,7 +185,7 @@ fn output_module(outfile: &mut File, mod_name: String, ast: &Ast)
     outfile.write(INDENT.as_bytes()).unwrap();
     outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap().insert(\
         \"__name__\".to_string(), cannolib::Value::Str(\"{}\"\
-        .to_string()));\n", mod_name).as_bytes()).unwrap();
+        .to_string()));\n", module).as_bytes()).unwrap();
 
     output_stmts(outfile, false, 1, body)?;
 
@@ -382,10 +432,6 @@ fn output_stmt_import(outfile: &mut File, indent: usize, stmt: &Statement)
             Some(ref alias) => alias,
             None => name
         };
-
-        // Compile the module if necessary
-        let filename = &format!("{}.py", name);
-        compile_file(filename, false, None)?;
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write(format!("use {};\n", name).as_bytes()).unwrap();

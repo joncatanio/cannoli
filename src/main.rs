@@ -1,4 +1,4 @@
-#[macro_use(lazy_static)]
+#[macro_use]
 extern crate lazy_static;
 extern crate regex;
 extern crate unicode_names;
@@ -29,7 +29,7 @@ fn main() {
         .get_matches();
 
     let file = args.value_of("INPUT").unwrap();
-    let result = compiler::compile_file(file, true, Some(&args));
+    let result = compiler::compile(file, Some(&args));
     if result.is_err() {
         println!("{}", result.unwrap_err());
         std::process::exit(1);
