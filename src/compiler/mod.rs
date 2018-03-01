@@ -69,7 +69,7 @@ pub fn compile(file: &str, opt_args: Option<&ArgMatches>)
     output_headers(&mut outfile)?;
 
     let mut is_main = true;
-    MOD_QUEUE.lock().unwrap().push(module);
+    queue_module(&module);
     loop {
         let modules = MOD_QUEUE.lock().unwrap().clone();
 
@@ -87,7 +87,7 @@ pub fn compile(file: &str, opt_args: Option<&ArgMatches>)
     Ok(())
 }
 
-pub fn compile_module(outfile: &mut File, module: &str, is_main: bool,
+fn compile_module(outfile: &mut File, module: &str, is_main: bool,
     opt_args: Option<&ArgMatches>) -> Result<(), CompilerError> {
     let mut file = format!("{}.py", module);
     file.insert_str(0, &*SRC_ROOT.lock().unwrap());
@@ -117,6 +117,15 @@ pub fn compile_module(outfile: &mut File, module: &str, is_main: bool,
         return output_main(outfile, &ast);
     } else {
         return output_module(outfile, module, &ast);
+    }
+}
+
+fn queue_module(module: &str) {
+    let compile = MOD_IMPORTS.lock().unwrap().get(module).is_none();
+
+    if compile {
+        MOD_QUEUE.lock().unwrap().push(module.to_string());
+        MOD_IMPORTS.lock().unwrap().insert(module.to_string());
     }
 }
 
@@ -170,28 +179,36 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
 
     // Import module will return a Value::Object, this will be assigned to
     // the module name in the caller's scope
+    outfile.write_all(format!("pub mod {} {{\n", module).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
+    outfile.write_all("use cannolib;\n".as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
+    outfile.write_all("use std;\n".as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("pub fn import_module() -> cannolib::Value {\n"
         .as_bytes()).unwrap();
-    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("let mut cannoli_scope_list: \
         Vec<std::collections::HashMap<String, cannolib::Value>> = \
         Vec::new();\n".as_bytes()).unwrap();
-    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("cannoli_scope_list.push(\
         cannolib::builtin::get_scope());\n".as_bytes()).unwrap();
-    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("cannoli_scope_list.push(\
         std::collections::HashMap::new());\n".as_bytes()).unwrap();
-    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap().insert(\
         \"__name__\".to_string(), cannolib::Value::Str(\"{}\"\
         .to_string()));\n", module).as_bytes()).unwrap();
 
-    output_stmts(outfile, false, 1, body)?;
+    output_stmts(outfile, false, 2, body)?;
 
-    outfile.write(INDENT.as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("cannolib::create_obj(cannoli_scope_list.last()\
-        .unwrap().clone())".as_bytes()).unwrap();
+        .unwrap().clone())\n".as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
+    outfile.write_all("}\n".as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
     Ok(())
 }
@@ -433,8 +450,11 @@ fn output_stmt_import(outfile: &mut File, indent: usize, stmt: &Statement)
             None => name
         };
 
+        queue_module(name);
+
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-        outfile.write(format!("use {};\n", name).as_bytes()).unwrap();
+        outfile.write(format!("use cannoli_mods::{};\n", name)
+            .as_bytes()).unwrap();
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write(format!("cannoli_scope_list.last_mut().unwrap().insert(\
             \"{}\".to_string(), {}::import_module());\n", alias, name)
