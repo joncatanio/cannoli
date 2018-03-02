@@ -18,9 +18,8 @@ pub fn get_file_prefix(file: &str) -> Result<(String, String), CompilerError> {
             }
         }
     } else {
-        println!("unsupported filetype for file: {}", file);
-        // TODO return CompilerError
-        unimplemented!()
+        return Err(CompilerError::IOError(format!("unsupported filetype for \
+            file: {}", file)))
     }
 }
 
