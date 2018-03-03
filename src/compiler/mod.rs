@@ -245,7 +245,7 @@ fn output_stmt(outfile: &mut File, class_scope: bool, indent: usize,
             class_scope, indent, stmt),
         Statement::ClassDef { .. } => output_stmt_classdef(outfile,
             indent, stmt),
-        Statement::Return { .. } => unimplemented!(),
+        Statement::Return { .. } => output_stmt_return(outfile, indent, stmt),
         Statement::Delete { .. } => unimplemented!(),
         Statement::Assign { .. } => output_stmt_assign(outfile,
             class_scope, indent, stmt),
@@ -344,6 +344,31 @@ fn output_stmt_classdef(outfile: &mut File, indent: usize, stmt: &Statement)
     outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
         .borrow_mut().insert(\"{}\".to_string(), cannolib::Value::Class {{ \
         tbl: cannoli_object_tbl }});\n", name).as_bytes()).unwrap();
+
+    Ok(())
+}
+
+fn output_stmt_return(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let value = match *stmt {
+        Statement::Return { ref value } => value,
+        _ => unreachable!()
+    };
+
+    match *value {
+        Some(ref value) => {
+            let value_local = output_expr(outfile, indent, value)?;
+
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write_all(format!("return {};\n", value_local)
+                .as_bytes()).unwrap();
+        },
+        None => {
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write_all("return cannolib::Value::None;\n"
+                .as_bytes()).unwrap();
+        }
+    }
 
     Ok(())
 }
