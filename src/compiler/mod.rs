@@ -259,7 +259,8 @@ fn output_stmt(outfile: &mut File, class_scope: bool, indent: usize,
         Statement::Try { .. } => unimplemented!(),
         Statement::Assert { .. } => unimplemented!(),
         Statement::Import { .. } => output_stmt_import(outfile, indent, stmt),
-        Statement::ImportFrom { .. } => unimplemented!(),
+        Statement::ImportFrom { .. } => output_stmt_import_from(outfile,
+            indent, stmt),
         Statement::Global { .. } => unimplemented!(),
         Statement::Nonlocal { .. } => unimplemented!(),
         Statement::Expr { .. }  => output_stmt_expr(outfile, indent, stmt),
@@ -510,6 +511,70 @@ fn output_stmt_import(outfile: &mut File, indent: usize, stmt: &Statement)
             alias, name).as_bytes()).unwrap();
     }
 
+    outfile.flush().unwrap();
+    Ok(())
+}
+
+// TODO extend the from-import functionality to include the directory levels,
+// dot imports "from . import x", etc.
+fn output_stmt_import_from(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let (module, names, _level) = match *stmt {
+        Statement::ImportFrom { ref module, ref names, ref level } =>
+            (module, names, level),
+        _ => unreachable!()
+    };
+
+    // Check for wildcard
+    let wildcard_present = if names.len() == 1 {
+        match names[0] {
+            Alias::Alias { ref name, .. } => {
+                if name == "*" { true } else { false }
+            }
+        }
+    } else {
+        false
+    };
+
+    let mod_name = if let &Some(ref mod_name) = module {
+        mod_name
+    } else {
+        unimplemented!()
+    };
+
+    queue_module(mod_name);
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write(format!("use cannoli_mods::{};\n", mod_name)
+        .as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
+        .borrow_mut().extend(cannolib::split_object({}::import_module(), ",
+        mod_name).as_bytes()).unwrap();
+
+    let mut members_arg = String::new();
+    if wildcard_present {
+        members_arg.push_str("None");
+    } else {
+        members_arg.push_str("Some(vec![");
+
+        for name in names.iter() {
+            let (name, asname) = match *name {
+                Alias::Alias { ref name, ref asname } => (name, asname)
+            };
+            let alias = match *asname {
+                Some(ref alias) => alias,
+                None => name
+            };
+
+            members_arg.push_str(&format!("(\"{}\".to_string(), \"{}\"\
+                .to_string()),", name, alias));
+        }
+        members_arg.pop();
+        members_arg.push_str("])");
+    }
+
+    outfile.write_all(format!("{}));\n", members_arg).as_bytes()).unwrap();
     Ok(())
 }
 
