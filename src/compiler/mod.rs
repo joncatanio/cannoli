@@ -559,6 +559,7 @@ fn output_stmt_import_from(outfile: &mut File, indent: usize, stmt: &Statement)
         members_arg.push_str("Some(vec![");
 
         for name in names.iter() {
+            // TODO check if '*' is used and throw and error at this point
             let (name, asname) = match *name {
                 Alias::Alias { ref name, ref asname } => (name, asname)
             };
@@ -623,7 +624,8 @@ fn output_expr(outfile: &mut File, indent: usize, expr: &Expression)
             output_expr_name_const(outfile, indent, value),
         Expression::Ellipsis => unimplemented!(),
         Expression::Attribute { .. } => output_expr_attr(outfile, indent, expr),
-        Expression::Subscript { .. } => unimplemented!(),
+        Expression::Subscript { .. } =>
+            output_expr_subscript(outfile, indent, expr),
         Expression::Starred { .. } => unimplemented!(),
         Expression::Name { .. } => output_expr_name(outfile, indent, expr),
         Expression::List { .. } => output_expr_list(outfile, indent, expr),
@@ -893,6 +895,33 @@ fn output_expr_attr(outfile: &mut File, indent: usize, expr: &Expression)
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = {}.get_attr(\"{}\");\n", local,
         value_local, attr));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
+}
+
+fn output_expr_subscript(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
+    let (value, slice, _ctx) = match *expr {
+        Expression::Subscript { ref value, ref slice, ref ctx } =>
+            (value, slice, ctx),
+        _ => unreachable!()
+    };
+    let local = Local::new();
+    let value_local = output_expr(outfile, indent, value)?;
+
+    // TODO support slices, not just indexing
+    match **slice {
+        Slice::Index { ref value } => {
+            let index_local = output_expr(outfile, indent, value)?;
+
+            output.push_str(&INDENT.repeat(indent));
+            output.push_str(&format!("let mut {} = {}.index({});\n", local,
+                value_local, index_local));
+        },
+        _ => unimplemented!()
+    }
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
