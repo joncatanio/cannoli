@@ -913,6 +913,33 @@ fn output_expr_subscript(outfile: &mut File, indent: usize, expr: &Expression)
 
     // TODO support slices, not just indexing
     match **slice {
+        Slice::Slice { ref lower, ref upper, ref step } => {
+            let lower_arg = match *lower {
+                Some(ref expr) => {
+                    let expr_local = output_expr(outfile, indent, expr)?;
+                    format!("Some({})", expr_local)
+                },
+                None => "None".to_string()
+            };
+            let upper_arg = match *upper {
+                Some(ref expr) => {
+                    let expr_local = output_expr(outfile, indent, expr)?;
+                    format!("Some({})", expr_local)
+                },
+                None => "None".to_string()
+            };
+            let step_arg = match *step {
+                Some(ref expr) => {
+                    let expr_local = output_expr(outfile, indent, expr)?;
+                    format!("Some({})", expr_local)
+                },
+                None => "None".to_string()
+            };
+
+            output.push_str(&INDENT.repeat(indent));
+            output.push_str(&format!("let mut {} = {}.slice({}, {}, {});\n",
+                local, value_local, lower_arg, upper_arg, step_arg));
+        },
         Slice::Index { ref value } => {
             let index_local = output_expr(outfile, indent, value)?;
 
