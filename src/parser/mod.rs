@@ -1595,7 +1595,13 @@ fn parse_test_list_comp(opt: OptToken, ctype: TLCompType, stream: &mut Lexer)
                     generators: vec![] }, stream)
             }
         },
-        _ => Ok((opt, expr))
+        _ => {
+            match ctype {
+                TLCompType::List => Ok((opt, Expression::List {
+                    elts: vec![expr], ctx: ExprContext::Load })),
+                _ => Ok((opt, expr))
+            }
+        }
     }
 }
 

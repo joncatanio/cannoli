@@ -720,6 +720,75 @@ fn dict_creation() {
 }
 
 #[test]
+fn tuple_creation() {
+    let stream = Lexer::new("()\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Tuple {
+                    elts: vec![],
+                    ctx: ExprContext::Load
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("(a)\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Name { id: String::from("a"),
+                    ctx: ExprContext::Load }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("(a,)\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Tuple {
+                    elts: vec![
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load }
+                    ],
+                    ctx: ExprContext::Load
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("(a,b)\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::Tuple {
+                    elts: vec![
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load },
+                        Expression::Name { id: String::from("b"),
+                            ctx: ExprContext::Load }
+                    ],
+                    ctx: ExprContext::Load
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+}
+
+#[test]
 fn list_creation() {
     let stream = Lexer::new("[]\n");
     let ast = parser::parse_start_symbol(stream).unwrap();
@@ -729,6 +798,24 @@ fn list_creation() {
             Statement::Expr {
                 value: Expression::List {
                     elts: vec![],
+                    ctx: ExprContext::Load
+                }
+            }
+        ]
+    };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("[a]\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+
+    let expected = Ast::Module {
+        body: vec![
+            Statement::Expr {
+                value: Expression::List {
+                    elts: vec![
+                        Expression::Name { id: String::from("a"),
+                            ctx: ExprContext::Load }
+                    ],
                     ctx: ExprContext::Load
                 }
             }
