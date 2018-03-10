@@ -629,7 +629,7 @@ fn output_expr(outfile: &mut File, indent: usize, expr: &Expression)
         Expression::Starred { .. } => unimplemented!(),
         Expression::Name { .. } => output_expr_name(outfile, indent, expr),
         Expression::List { .. } => output_expr_list(outfile, indent, expr),
-        Expression::Tuple { .. } => unimplemented!()
+        Expression::Tuple { .. } => output_expr_tuple(outfile, indent, expr)
     }
 }
 
@@ -911,7 +911,6 @@ fn output_expr_subscript(outfile: &mut File, indent: usize, expr: &Expression)
     let local = Local::new();
     let value_local = output_expr(outfile, indent, value)?;
 
-    // TODO support slices, not just indexing
     match **slice {
         Slice::Slice { ref lower, ref upper, ref step } => {
             let lower_arg = match *lower {
@@ -940,14 +939,14 @@ fn output_expr_subscript(outfile: &mut File, indent: usize, expr: &Expression)
             output.push_str(&format!("let mut {} = {}.slice({}, {}, {});\n",
                 local, value_local, lower_arg, upper_arg, step_arg));
         },
+        Slice::ExtSlice { .. } => unimplemented!(),
         Slice::Index { ref value } => {
             let index_local = output_expr(outfile, indent, value)?;
 
             output.push_str(&INDENT.repeat(indent));
             output.push_str(&format!("let mut {} = {}.index({});\n", local,
                 value_local, index_local));
-        },
-        _ => unimplemented!()
+        }
     }
 
     outfile.write_all(output.as_bytes()).unwrap();
@@ -995,6 +994,34 @@ fn output_expr_list(outfile: &mut File, indent: usize, expr: &Expression)
     output.push_str(&format!("let mut {} = cannolib::Value::List(
         std::rc::Rc::new(std::cell::RefCell::new(cannolib::ListType::new(\
         cannoli_list_builder))));\n", local));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
+}
+
+fn output_expr_tuple(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
+    let (elts, _ctx) = match *expr {
+        Expression::Tuple { ref elts, ref ctx } => (elts, ctx),
+        _ => unreachable!()
+    };
+    let local = Local::new();
+
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let mut cannoli_tuple_builder = Vec::new();\n"));
+
+    for elt in elts.iter() {
+        let elt_local = output_expr(outfile, indent, elt)?;
+
+        output.push_str(&INDENT.repeat(indent));
+        output.push_str(&format!("cannoli_tuple_builder.push({});\n",
+            elt_local));
+    }
+
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let mut {} = cannolib::Value::Tuple(\
+        cannolib::TupleType::new(cannoli_tuple_builder));\n", local));
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)

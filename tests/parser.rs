@@ -767,6 +767,10 @@ fn tuple_creation() {
     };
     assert_eq!(ast, expected);
 
+    let stream = Lexer::new("a,\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
+    assert_eq!(ast, expected);
+
     let stream = Lexer::new("(a,b)\n");
     let ast = parser::parse_start_symbol(stream).unwrap();
 
@@ -785,6 +789,10 @@ fn tuple_creation() {
             }
         ]
     };
+    assert_eq!(ast, expected);
+
+    let stream = Lexer::new("a,b\n");
+    let ast = parser::parse_start_symbol(stream).unwrap();
     assert_eq!(ast, expected);
 }
 
