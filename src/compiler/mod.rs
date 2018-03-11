@@ -251,7 +251,7 @@ fn output_stmt(outfile: &mut File, class_scope: bool, indent: usize,
             class_scope, indent, stmt),
         Statement::AugAssign { .. } => unimplemented!(),
         Statement::AnnAssign { .. } => unimplemented!(),
-        Statement::For { .. } => unimplemented!(),
+        Statement::For { .. } => output_stmt_for(outfile, indent, stmt),
         Statement::While { .. } => output_stmt_while(outfile, indent, stmt),
         Statement::If { .. }    => output_stmt_if(outfile, indent, stmt),
         Statement::With { .. } => unimplemented!(),
@@ -411,6 +411,46 @@ fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
             _ => panic!("unsupported assignment")
         }
     }
+    Ok(())
+}
+
+fn output_stmt_for(outfile: &mut File, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let (target, iter, body, orelse) = match *stmt {
+        Statement::For { ref target, ref iter, ref body, ref orelse } =>
+            (target, iter, body, orelse),
+        _ => unreachable!()
+    };
+    let local = Local::new();
+    let iter_local = output_expr(outfile, indent, iter)?;
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all(format!("let mut {} = {}.clone_seq().into_iter();\n",
+        local, iter_local).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all("loop {\n".as_bytes()).unwrap();
+
+    match *target {
+        Expression::Name { ref id, .. } => {
+            outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+            outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
+                .borrow_mut().insert(\"{}\".to_string(), (if let Some(val) = \
+                {}.next() {{ val }} else {{ break }}));\n", id, local)
+                .as_bytes()).unwrap();
+
+            output_stmts(outfile, false, indent + 1, body)?;
+        },
+        Expression::List { ref elts, .. } => {
+            unimplemented!()
+        },
+        Expression::Tuple { ref elts, .. } => {
+            unimplemented!()
+        },
+        _ => unimplemented!()
+    }
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all("}\n".as_bytes()).unwrap();
     Ok(())
 }
 
