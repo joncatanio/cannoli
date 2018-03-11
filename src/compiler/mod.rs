@@ -437,18 +437,38 @@ fn output_stmt_for(outfile: &mut File, indent: usize, stmt: &Statement)
                 .borrow_mut().insert(\"{}\".to_string(), (if let Some(val) = \
                 {}.next() {{ val }} else {{ break }}));\n", id, local)
                 .as_bytes()).unwrap();
-
-            output_stmts(outfile, false, indent + 1, body)?;
         },
         Expression::List { ref elts, .. } => {
             unimplemented!()
         },
         Expression::Tuple { ref elts, .. } => {
-            unimplemented!()
+            let value_local = Local::new();
+
+            outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+            outfile.write_all(format!("let mut {} = if let Some(val) = \
+                {}.next() {{ val }} else {{ break }};\n", value_local, local)
+                .as_bytes()).unwrap();
+
+            for (ndx, elt) in elts.iter().enumerate() {
+                match *elt {
+                    Expression::Name { ref id, .. } => {
+
+                        outfile.write(INDENT.repeat(indent + 1).as_bytes())
+                            .unwrap();
+                        outfile.write_all(format!("cannoli_scope_list.\
+                            last_mut().unwrap().borrow_mut().insert(\"{}\"\
+                            .to_string(), {}.index(cannolib::Value::Number(\
+                            cannolib::NumericType::Integer({}))));\n", id,
+                            value_local, ndx).as_bytes()).unwrap();
+                    },
+                    _ => unimplemented!()
+                }
+            }
         },
         _ => unimplemented!()
     }
 
+    output_stmts(outfile, false, indent + 1, body)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
     Ok(())
@@ -1031,7 +1051,7 @@ fn output_expr_list(outfile: &mut File, indent: usize, expr: &Expression)
     }
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let mut {} = cannolib::Value::List(
+    output.push_str(&format!("let mut {} = cannolib::Value::List(\
         std::rc::Rc::new(std::cell::RefCell::new(cannolib::ListType::new(\
         cannoli_list_builder))));\n", local));
 
