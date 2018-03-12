@@ -5,6 +5,8 @@ mod local;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::sync::Mutex;
+use std::iter::Peekable;
+use std::slice::Iter;
 use std::collections::HashSet;
 use clap::ArgMatches;
 
@@ -414,12 +416,10 @@ fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
     Ok(())
 }
 
-// TODO implement recursive logic for target unpacking, currently this only
-// supports single-level unpacking consider something like
-// ex: for a, ((b, c), d) in [(1, ((2, 3), 4))]: ...
+// TODO add support for for-else
 fn output_stmt_for(outfile: &mut File, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
-    let (target, iter, body, orelse) = match *stmt {
+    let (target, iter, body, _orelse) = match *stmt {
         Statement::For { ref target, ref iter, ref body, ref orelse } =>
             (target, iter, body, orelse),
         _ => unreachable!()
@@ -499,7 +499,7 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
 
     // closing decorator
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write_all("}".as_bytes()).unwrap();
+    outfile.write_all("}\n".as_bytes()).unwrap();
 
     // check for elif/else
     if !orelse.is_empty() {
@@ -783,44 +783,9 @@ fn output_expr_listcomp(outfile: &mut File, indent: usize, expr: &Expression)
     outfile.write_all(&format!("let mut {} = vec![];\n", list_local)
         .as_bytes()).unwrap();
 
-    let mut gen_iter = generators.iter().enumerate().peekable();
-    loop {
-        match gen_iter.next() {
-            Some((ndx, comp)) => {
-                let indent = indent + ndx;
-                let (target, iter, ifs) = match *comp {
-                    Comprehension::Comprehension { ref target, ref iter,
-                        ref ifs } => (target, iter, ifs)
-                };
-                let iter_local = Local::new();
-                let seq_local = output_expr(outfile, indent, iter)?;
+    let gen_iter = generators.iter().peekable();
+    output_nested_listcomp(outfile, indent, &list_local, elt, gen_iter)?;
 
-                outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-                outfile.write_all(format!("let mut {} = {}.clone_seq()\
-                    .into_iter();\n", iter_local, seq_local).as_bytes()).unwrap();
-                outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-                outfile.write_all("loop {\n".as_bytes()).unwrap();
-
-                unpack_iterator(outfile, indent + 1, iter_local, target)?;
-
-                // For the most nested element we want to append the 'elt'
-                if let None = gen_iter.peek() {
-                    let elt_local = output_expr(outfile, indent + 1, elt)?;
-
-                    outfile.write(INDENT.repeat(indent+1).as_bytes()).unwrap();
-                    outfile.write(format!("{}.push({});\n", list_local,
-                        elt_local).as_bytes()).unwrap();
-                }
-            },
-            None => break
-        }
-    }
-
-    // Close off the nested loops
-    for ndx in (0..generators.len()).rev() {
-        outfile.write(INDENT.repeat(indent + ndx).as_bytes()).unwrap();
-        outfile.write("}\n".as_bytes()).unwrap();
-    }
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = cannolib::Value::List(\
         std::rc::Rc::new(std::cell::RefCell::new(cannolib::ListType::new(\
@@ -830,6 +795,80 @@ fn output_expr_listcomp(outfile: &mut File, indent: usize, expr: &Expression)
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
+}
+
+// Tail recurse on nested fors in a list comprehension this was done to print
+// matching brackets in a much cleaner way
+fn output_nested_listcomp(outfile: &mut File, indent: usize, list_local: &Local,
+    elt: &Expression, mut gen_iter: Peekable<Iter<Comprehension>>)
+    -> Result<(), CompilerError> {
+    let comp = match gen_iter.next() {
+        Some(comp) => comp,
+        None => return Ok(()) // Base case
+    };
+    let (target, iter, ifs) = match *comp {
+        Comprehension::Comprehension { ref target, ref iter, ref ifs} =>
+            (target, iter, ifs)
+    };
+    let iter_local = Local::new();
+    let seq_local = output_expr(outfile, indent, iter)?;
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all(format!("let mut {} = {}.clone_seq()\
+        .into_iter();\n", iter_local, seq_local).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all("loop {\n".as_bytes()).unwrap();
+
+    unpack_iterator(outfile, indent + 1, iter_local, target)?;
+
+    let mut conds = vec![];
+    for cond in ifs.iter() {
+        let cond_local = output_expr(outfile, indent + 1, cond)?;
+        conds.push(cond_local);
+    }
+
+    if !conds.is_empty() {
+        outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+        outfile.write("if ".as_bytes()).unwrap();
+
+        let mut cond_iter = conds.iter().peekable();
+        loop {
+            let cond = match cond_iter.next() {
+                Some(cond) => cond,
+                None => break
+            };
+            outfile.write(format!("({}).to_bool()", cond)
+                .as_bytes()).unwrap();
+
+            if let Some(_) = cond_iter.peek() {
+                outfile.write(" && ".as_bytes()).unwrap();
+            }
+        }
+
+        outfile.write_all(" {\n".as_bytes()).unwrap();
+    }
+
+    let cond_indent = if conds.is_empty() { indent + 1 } else { indent + 2 };
+    // For the most nested element we want to append the 'elt'
+    if let None = gen_iter.peek() {
+        let elt_local = output_expr(outfile, cond_indent, elt)?;
+
+        outfile.write(INDENT.repeat(cond_indent).as_bytes()).unwrap();
+        outfile.write(format!("{}.push({});\n", list_local, elt_local)
+            .as_bytes()).unwrap();
+    }
+
+    // recurse before we output closing brackets
+    output_nested_listcomp(outfile, cond_indent, list_local, elt, gen_iter)?;
+
+    if !conds.is_empty() {
+        outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+        outfile.write("}\n".as_bytes()).unwrap();
+    }
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write("}\n".as_bytes()).unwrap();
+
+    Ok(())
 }
 
 fn output_expr_cmp(outfile: &mut File, indent: usize, expr: &Expression)
@@ -1201,6 +1240,9 @@ fn output_cmp_operator(op: &CmpOperator)
     Ok(op_str.to_string())
 }
 
+// TODO implement recursive logic for target unpacking, currently this only
+// supports single-level unpacking consider something like
+// ex: for a, ((b, c), d) in [(1, ((2, 3), 4))]: ...
 fn unpack_iterator(outfile: &mut File, indent: usize, iter_local: Local,
     target: &Expression) -> Result<(), CompilerError> {
     match *target {
@@ -1211,7 +1253,7 @@ fn unpack_iterator(outfile: &mut File, indent: usize, iter_local: Local,
                 {}.next() {{ val }} else {{ break }}));\n", id, iter_local)
                 .as_bytes()).unwrap();
         },
-        Expression::List { ref elts, .. } => {
+        Expression::List { .. } => {
             unimplemented!()
         },
         Expression::Tuple { ref elts, .. } => {
