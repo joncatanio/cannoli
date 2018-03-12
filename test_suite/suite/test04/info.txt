@@ -1,0 +1,1 @@
+class definition with various references modifying the same class

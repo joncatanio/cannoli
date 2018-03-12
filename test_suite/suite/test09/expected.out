@@ -1,0 +1,4 @@
+super_duper_function from unrelated_mod!
+calling 'func' in some_mod!
+othermod calling in hello from some_class
+x: 5 hello: hello from some_class

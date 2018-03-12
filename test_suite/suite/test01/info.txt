@@ -1,0 +1,1 @@
+simple class with member function call

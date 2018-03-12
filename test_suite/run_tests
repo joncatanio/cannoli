@@ -1,0 +1,65 @@
+#!/bin/bash
+
+TEST_DIR=suite
+EXECUTABLE=cannoli
+RUST_CRATE=sandbox
+
+run_test() {
+   f=$1
+   printf "\n\033[33;93m"
+   echo "Testing: '$f'"
+   printf "\033[0m"
+
+   printf "\033[33;94m"
+   echo -n "INFO: "
+   cat "$f"/info.txt
+   printf "\033[0m"
+
+   ./$EXECUTABLE "$f"/test.py > /dev/null
+   mv "$f"/main.rs "$f"/cannoli_mods.rs $RUST_CRATE/src/
+   cd $RUST_CRATE
+   cargo build --release 2>/dev/null
+   STATUS=$?
+   if [[ $STATUS -ne 0 ]]; then
+      printf "\033[33;31m"
+      printf "$f build failed\n\n"
+      printf "\033[0m"
+      continue
+   fi
+
+   cd ..
+   ./$RUST_CRATE/target/release/$RUST_CRATE > "$f"/test.out
+   STATUS=$?
+   if [[ $STATUS -eq 0 ]]; then
+      printf "\033[33;32m"
+      printf "Test output normally.\n"
+      printf "\033[0m"
+   else
+      printf "\033[33;31m"
+      printf "$f exited with a non-zero exit status.\n"
+      printf "\033[0m"
+   fi
+
+   diff "$f"/expected.out "$f"/test.out > /dev/null
+   STATUS=$?
+   if [[ $STATUS -eq 0 ]]; then
+      printf "diff:\033[33;32m"
+      printf "[SUCCESS]\n"
+      printf "\033[0m"
+   else
+      printf "diff:\033[33;31m"
+      printf "[FAILED]\n"
+      printf "\033[0m"
+   fi
+}
+
+# Run tests or single test if specified
+if [[ -z "$1" ]]; then
+   for f in $TEST_DIR/*; do
+      if [[ -d $f ]]; then
+         run_test "$f"
+      fi
+   done
+else
+   run_test "$TEST_DIR/$1"
+fi

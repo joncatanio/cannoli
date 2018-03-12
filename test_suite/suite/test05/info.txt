@@ -1,0 +1,1 @@
+multiple classes with fields of each other and __name__ == '__main__' test
