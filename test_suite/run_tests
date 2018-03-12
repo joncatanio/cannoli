@@ -3,6 +3,7 @@
 TEST_DIR=suite
 EXECUTABLE=cannoli
 RUST_CRATE=sandbox
+PYTHON=python3
 
 run_test() {
    f=$1
@@ -14,6 +15,8 @@ run_test() {
    echo -n "INFO: "
    cat "$f"/info.txt
    printf "\033[0m"
+
+   $PYTHON "$f"/test.py > "$f"/expected.out
 
    ./$EXECUTABLE "$f"/test.py > /dev/null
    mv "$f"/main.rs "$f"/cannoli_mods.rs $RUST_CRATE/src/

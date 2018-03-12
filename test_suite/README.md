@@ -4,7 +4,7 @@ This is a custom test suite created to easily create Python files and test
 them against Cannoli. Instead of hacking together a solution using Rust's
 integration tests to diff Python output, I just wrote a quick script.
 
-## How to Use
+## How to Run Tests
 `run_tests` is a very simple `bash` script which runs all tests located in
 the `suite/` directory when invoked as so `./run_tests`. When no arguments are
 provided it will run through each `suite/` subdirectory, print out `info.txt`,
@@ -17,4 +17,11 @@ files, output from Cannoli, into `sandbox/src` subsequently running
 
 ### Running Individual Tests
 Simply invoke the `run_tests` script with a test directory to be evaluated.
+
 Ex: `./run_tests test01`
+
+## Creating Custom Tests
+- Create new test directory under `suite` [ex: `mkdir suite/test01`]
+- Add an `info.txt` file which explains what the test does
+  [ex: `echo "simple test" > suite/test01/info.txt`]
+- Create `test.py` as the main Python file, other modules may be added and used

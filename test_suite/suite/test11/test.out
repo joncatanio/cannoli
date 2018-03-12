@@ -1,6 +1,0 @@
-func call -- mult: 600
-func call calling a private global: I'm a private global, shhh
-GLOBAL: I'm a global variable in sick_lib
-other_lib: func1
-other_lib: func2(hello)
-51
