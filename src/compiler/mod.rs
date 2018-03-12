@@ -414,6 +414,9 @@ fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
     Ok(())
 }
 
+// TODO implement recursive logic for target unpacking, currently this only
+// supports single-level unpacking consider something like
+// ex: for a, ((b, c), d) in [(1, ((2, 3), 4))]: ...
 fn output_stmt_for(outfile: &mut File, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (target, iter, body, orelse) = match *stmt {
@@ -421,54 +424,18 @@ fn output_stmt_for(outfile: &mut File, indent: usize, stmt: &Statement)
             (target, iter, body, orelse),
         _ => unreachable!()
     };
-    let local = Local::new();
-    let iter_local = output_expr(outfile, indent, iter)?;
+    let iter_local = Local::new();
+    let seq_local = output_expr(outfile, indent, iter)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("let mut {} = {}.clone_seq().into_iter();\n",
-        local, iter_local).as_bytes()).unwrap();
+        iter_local, seq_local).as_bytes()).unwrap();
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("loop {\n".as_bytes()).unwrap();
 
-    match *target {
-        Expression::Name { ref id, .. } => {
-            outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
-            outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
-                .borrow_mut().insert(\"{}\".to_string(), (if let Some(val) = \
-                {}.next() {{ val }} else {{ break }}));\n", id, local)
-                .as_bytes()).unwrap();
-        },
-        Expression::List { ref elts, .. } => {
-            unimplemented!()
-        },
-        Expression::Tuple { ref elts, .. } => {
-            let value_local = Local::new();
-
-            outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
-            outfile.write_all(format!("let mut {} = if let Some(val) = \
-                {}.next() {{ val }} else {{ break }};\n", value_local, local)
-                .as_bytes()).unwrap();
-
-            for (ndx, elt) in elts.iter().enumerate() {
-                match *elt {
-                    Expression::Name { ref id, .. } => {
-
-                        outfile.write(INDENT.repeat(indent + 1).as_bytes())
-                            .unwrap();
-                        outfile.write_all(format!("cannoli_scope_list.\
-                            last_mut().unwrap().borrow_mut().insert(\"{}\"\
-                            .to_string(), {}.index(cannolib::Value::Number(\
-                            cannolib::NumericType::Integer({}))));\n", id,
-                            value_local, ndx).as_bytes()).unwrap();
-                    },
-                    _ => unimplemented!()
-                }
-            }
-        },
-        _ => unimplemented!()
-    }
-
+    unpack_iterator(outfile, indent + 1, iter_local, target)?;
     output_stmts(outfile, false, indent + 1, body)?;
+
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
     Ok(())
@@ -669,7 +636,8 @@ fn output_expr(outfile: &mut File, indent: usize, expr: &Expression)
         Expression::If { .. } => output_expr_if(outfile, indent, expr),
         Expression::Dict { .. } => unimplemented!(),
         Expression::Set { .. } => unimplemented!(),
-        Expression::ListComp { .. } => unimplemented!(),
+        Expression::ListComp { .. } =>
+            output_expr_listcomp(outfile, indent, expr),
         Expression::SetComp { .. } => unimplemented!(),
         Expression::DictComp { .. } => unimplemented!(),
         Expression::Generator { .. } => unimplemented!(),
@@ -790,6 +758,75 @@ fn output_expr_if(outfile: &mut File, indent: usize, expr: &Expression)
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = if ({}).to_bool() {{ {} }} \
         else {{ {} }};\n", local, test_local, body_local, orelse_local));
+
+    outfile.write_all(output.as_bytes()).unwrap();
+    Ok(local)
+}
+
+fn output_expr_listcomp(outfile: &mut File, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
+    let mut output = String::new();
+    let (elt, generators) = match *expr {
+        Expression::ListComp { ref elt, ref generators } => (elt, generators),
+        _ => unreachable!()
+    };
+    let local = Local::new();
+    let list_local = Local::new();
+
+    // Isolate the list comprehension inorder to ensure targets don't get
+    // mapped to the current scope list, then start building output list
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all("cannoli_scope_list.push(std::rc::Rc::new(\
+        std::cell::RefCell::new(std::collections::HashMap::new())));\n"
+        .as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all(&format!("let mut {} = vec![];\n", list_local)
+        .as_bytes()).unwrap();
+
+    let mut gen_iter = generators.iter().enumerate().peekable();
+    loop {
+        match gen_iter.next() {
+            Some((ndx, comp)) => {
+                let indent = indent + ndx;
+                let (target, iter, ifs) = match *comp {
+                    Comprehension::Comprehension { ref target, ref iter,
+                        ref ifs } => (target, iter, ifs)
+                };
+                let iter_local = Local::new();
+                let seq_local = output_expr(outfile, indent, iter)?;
+
+                outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+                outfile.write_all(format!("let mut {} = {}.clone_seq()\
+                    .into_iter();\n", iter_local, seq_local).as_bytes()).unwrap();
+                outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+                outfile.write_all("loop {\n".as_bytes()).unwrap();
+
+                unpack_iterator(outfile, indent + 1, iter_local, target)?;
+
+                // For the most nested element we want to append the 'elt'
+                if let None = gen_iter.peek() {
+                    let elt_local = output_expr(outfile, indent + 1, elt)?;
+
+                    outfile.write(INDENT.repeat(indent+1).as_bytes()).unwrap();
+                    outfile.write(format!("{}.push({});\n", list_local,
+                        elt_local).as_bytes()).unwrap();
+                }
+            },
+            None => break
+        }
+    }
+
+    // Close off the nested loops
+    for ndx in (0..generators.len()).rev() {
+        outfile.write(INDENT.repeat(indent + ndx).as_bytes()).unwrap();
+        outfile.write("}\n".as_bytes()).unwrap();
+    }
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str(&format!("let mut {} = cannolib::Value::List(\
+        std::rc::Rc::new(std::cell::RefCell::new(cannolib::ListType::new(\
+        {}))));\n", local, list_local));
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str("cannoli_scope_list.pop();\n");
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
@@ -1162,4 +1199,45 @@ fn output_cmp_operator(op: &CmpOperator)
         CmpOperator::NotIn => unimplemented!()
     };
     Ok(op_str.to_string())
+}
+
+fn unpack_iterator(outfile: &mut File, indent: usize, iter_local: Local,
+    target: &Expression) -> Result<(), CompilerError> {
+    match *target {
+        Expression::Name { ref id, .. } => {
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
+                .borrow_mut().insert(\"{}\".to_string(), (if let Some(val) = \
+                {}.next() {{ val }} else {{ break }}));\n", id, iter_local)
+                .as_bytes()).unwrap();
+        },
+        Expression::List { ref elts, .. } => {
+            unimplemented!()
+        },
+        Expression::Tuple { ref elts, .. } => {
+            let value_local = Local::new();
+
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write_all(format!("let mut {} = if let Some(val) = \
+                {}.next() {{ val }} else {{ break }};\n", value_local,
+                iter_local).as_bytes()).unwrap();
+
+            for (ndx, elt) in elts.iter().enumerate() {
+                match *elt {
+                    Expression::Name { ref id, .. } => {
+                        outfile.write(INDENT.repeat(indent).as_bytes())
+                            .unwrap();
+                        outfile.write_all(format!("cannoli_scope_list.\
+                            last_mut().unwrap().borrow_mut().insert(\"{}\"\
+                            .to_string(), {}.index(cannolib::Value::Number(\
+                            cannolib::NumericType::Integer({}))));\n", id,
+                            value_local, ndx).as_bytes()).unwrap();
+                    },
+                    _ => unimplemented!()
+                }
+            }
+        },
+        _ => unimplemented!()
+    }
+    Ok(())
 }
