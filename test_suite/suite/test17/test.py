@@ -19,3 +19,10 @@ c = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, -1, -2, -3, -4]
 result = [x + y for x in a if x % 2 if x > 3 for y in b if y % 2 == 0 for z in c]
 
 print(result)
+
+def cast(val, x):
+   return val * x
+
+val = 15
+
+print([(x, cast(val, x)) for x in a])

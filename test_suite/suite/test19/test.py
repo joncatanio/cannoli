@@ -1,0 +1,3 @@
+print("example string here".split())
+
+print("Stringman's Creed: This is my string. There are many like it but this one is mine. My string is my best friend. It is my life. I must master it as I must master my life. Without me, my string is useless. Without me, my string is useless. Without my string, I am useless. I must split my string true. I must append straighter than my enemy who is trying to compile me. I must append him before he appends me. I will... My string and I know that what counts in Python is not the characters we split, ......... this is getting increasingly difficult to translate. I think I'm done.".split())
