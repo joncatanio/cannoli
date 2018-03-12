@@ -57,6 +57,7 @@ run_test() {
 }
 
 # Run tests or single test if specified
+mkdir -p $RUST_CRATE/src
 if [[ -z "$1" ]]; then
    for f in $TEST_DIR/*; do
       if [[ -d $f ]]; then
