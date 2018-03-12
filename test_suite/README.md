@@ -4,6 +4,13 @@ This is a custom test suite created to easily create Python files and test
 them against Cannoli. Instead of hacking together a solution using Rust's
 integration tests to diff Python output, I just wrote a quick script.
 
+## Requirements
+- Build Cannoli by running `cargo build` in the `cannoli` root directory. This
+  will enable the symlink included in this directory.
+- Clone [Cannolib](https://github.com/joncatanio/cannolib) and place it in the
+  same directory with Cannoli. This allows the `Cargo.toml` file in `sandbox`
+  to find the Cannolib library.
+
 ## How to Run Tests
 `run_tests` is a very simple `bash` script which runs all tests located in
 the `suite/` directory when invoked as so `./run_tests`. When no arguments are
