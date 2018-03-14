@@ -1237,9 +1237,8 @@ fn output_cmp_operator(op: &CmpOperator, val: &Local)
     Ok(op_str)
 }
 
-// TODO implement recursive logic for target unpacking, currently this only
-// supports single-level unpacking consider something like
-// ex: for a, ((b, c), d) in [(1, ((2, 3), 4))]: ...
+// TODO add list support when needed, should be just like Tuples
+/// Tail-recursive function that recursively unpacks values.
 fn unpack_values(outfile: &mut File, indent: usize, packed_values: &Local,
     target: &Expression) -> Result<(), CompilerError> {
     match *target {
@@ -1269,6 +1268,17 @@ fn unpack_values(outfile: &mut File, indent: usize, packed_values: &Local,
                             .to_string(), {}.index(cannolib::Value::Number(\
                             cannolib::NumericType::Integer({}))));\n", id,
                             packed_values, ndx).as_bytes()).unwrap();
+                    },
+                    Expression::Tuple { .. } => {
+                        let local = Local::new();
+
+                        outfile.write(INDENT.repeat(indent).as_bytes())
+                            .unwrap();
+                        outfile.write_all(format!("let mut {} = {}.index(\
+                            cannolib::Value::Number(cannolib::NumericType::\
+                            Integer({})));\n", local, packed_values, ndx)
+                            .as_bytes()).unwrap();
+                        unpack_values(outfile, indent, &local, elt)?;
                     },
                     _ => unimplemented!()
                 }
