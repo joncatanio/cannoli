@@ -1,1 +1,1 @@
-comparison operators test
+comparison and standard operator tests

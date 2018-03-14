@@ -696,8 +696,8 @@ fn output_expr_binop(outfile: &mut File, indent: usize, expr: &Expression)
     let right_local = output_expr(outfile, indent, right)?;
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let mut {} = {} {} {};\n", local,
-        left_local, output_operator(op)?, right_local));
+    output.push_str(&format!("let mut {} = {};\n", local,
+        output_operator(&left_local, op, &right_local)?));
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
@@ -1198,24 +1198,24 @@ fn output_bool_operator(op: &BoolOperator)
     Ok(op_str.to_string())
 }
 
-fn output_operator(op: &Operator)
+fn output_operator(lft: &Local, op: &Operator, rht: &Local)
     -> Result<String, CompilerError> {
     let op_str = match *op {
-        Operator::Add => "+",
-        Operator::Sub => "-",
-        Operator::Mult => "*",
+        Operator::Add => format!("{} + {}", lft, rht),
+        Operator::Sub => format!("{} - {}", lft, rht),
+        Operator::Mult => format!("{} * {}", lft, rht),
         Operator::MatMult => unimplemented!(),
-        Operator::Div => "/",
-        Operator::Mod => "%",
-        Operator::Pow => unimplemented!(),
-        Operator::LShift => "<<",
-        Operator::RShift => ">>",
-        Operator::BitOr => "|",
-        Operator::BitXor => "^",
-        Operator::BitAnd => "&",
+        Operator::Div => format!("{} / {}", lft, rht),
+        Operator::Mod => format!("{} % {}", lft, rht),
+        Operator::Pow => format!("{}.pow(&{})", lft, rht),
+        Operator::LShift => format!("{} << {}", lft, rht),
+        Operator::RShift => format!("{} >> {}", lft, rht),
+        Operator::BitOr => format!("{} | {}", lft, rht),
+        Operator::BitXor => format!("{} ^ {}", lft, rht),
+        Operator::BitAnd => format!("{} & {}", lft, rht),
         Operator::FloorDiv => unimplemented!()
     };
-    Ok(op_str.to_string())
+    Ok(op_str)
 }
 
 // TODO I'll have to do something interesting for is/in, maybe append a

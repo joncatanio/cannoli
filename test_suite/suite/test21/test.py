@@ -30,3 +30,13 @@ print(-2 >= 3)
 
 print("" in "some string")
 print("substring" in "this string has a substring woa")
+
+print(1 ** 2)
+print(0 ** 5)
+# uncomment and visually check, the floating point values are slightly
+# different between Rust and Python
+#print(6 ** -2)
+#print(6 ** -2.4)
+#print(4.2 ** 8)
+#print(4.5 ** 2.4)
+#print(9.2 ** -1.2)
