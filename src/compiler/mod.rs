@@ -397,21 +397,7 @@ fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
     // but only work on lists and dicts.
     let value_local = output_expr(outfile, indent, value)?;
     for target in targets.iter() {
-        match *target {
-            Expression::Name { ref id, .. } => {
-                outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-                outfile.write_all(format!(
-                    "{}.insert(\"{}\".to_string(), {});\n", prefix,
-                    id, value_local).as_bytes()).unwrap();
-            },
-            Expression::Attribute { ref value, ref attr, .. } => {
-                let base_local = output_expr(outfile, indent, value)?;
-                outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-                outfile.write_all(format!("cannolib::attr_assign({}, \"{}\", {}\
-                    );\n", base_local, attr, value_local).as_bytes()).unwrap();
-            },
-            _ => panic!("unsupported assignment")
-        }
+        unpack_values(outfile, indent, &value_local, target)?;
     }
     Ok(())
 }
@@ -433,7 +419,13 @@ fn output_stmt_for(outfile: &mut File, indent: usize, stmt: &Statement)
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("loop {\n".as_bytes()).unwrap();
 
-    unpack_iterator(outfile, indent + 1, iter_local, target)?;
+    let next_local = Local::new();
+    outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+    outfile.write_all(format!("let mut {} = if let Some(val) = \
+        {}.next() {{ val }} else {{ break }};\n", next_local,
+        iter_local).as_bytes()).unwrap();
+
+    unpack_values(outfile, indent + 1, &next_local, target)?;
     output_stmts(outfile, false, indent + 1, body)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -819,7 +811,12 @@ fn output_nested_listcomp(outfile: &mut File, indent: usize, list_local: &Local,
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("loop {\n".as_bytes()).unwrap();
 
-    unpack_iterator(outfile, indent + 1, iter_local, target)?;
+    let next_local = Local::new();
+    outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+    outfile.write_all(format!("let mut {} = if let Some(val) = \
+        {}.next() {{ val }} else {{ break }};\n", next_local,
+        iter_local).as_bytes()).unwrap();
+    unpack_values(outfile, indent + 1, &next_local, target)?;
 
     let mut conds = vec![];
     for cond in ifs.iter() {
@@ -1243,27 +1240,25 @@ fn output_cmp_operator(op: &CmpOperator, val: &Local)
 // TODO implement recursive logic for target unpacking, currently this only
 // supports single-level unpacking consider something like
 // ex: for a, ((b, c), d) in [(1, ((2, 3), 4))]: ...
-fn unpack_iterator(outfile: &mut File, indent: usize, iter_local: Local,
+fn unpack_values(outfile: &mut File, indent: usize, packed_values: &Local,
     target: &Expression) -> Result<(), CompilerError> {
     match *target {
         Expression::Name { ref id, .. } => {
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
             outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
-                .borrow_mut().insert(\"{}\".to_string(), (if let Some(val) = \
-                {}.next() {{ val }} else {{ break }}));\n", id, iter_local)
-                .as_bytes()).unwrap();
+                .borrow_mut().insert(\"{}\".to_string(), {});\n", id,
+                packed_values).as_bytes()).unwrap();
+        },
+        Expression::Attribute { ref value, ref attr, .. } => {
+            let base_local = output_expr(outfile, indent, value)?;
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write_all(format!("cannolib::attr_assign({}, \"{}\", {}\
+                );\n", base_local, attr, packed_values).as_bytes()).unwrap();
         },
         Expression::List { .. } => {
             unimplemented!()
         },
         Expression::Tuple { ref elts, .. } => {
-            let value_local = Local::new();
-
-            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-            outfile.write_all(format!("let mut {} = if let Some(val) = \
-                {}.next() {{ val }} else {{ break }};\n", value_local,
-                iter_local).as_bytes()).unwrap();
-
             for (ndx, elt) in elts.iter().enumerate() {
                 match *elt {
                     Expression::Name { ref id, .. } => {
@@ -1273,13 +1268,13 @@ fn unpack_iterator(outfile: &mut File, indent: usize, iter_local: Local,
                             last_mut().unwrap().borrow_mut().insert(\"{}\"\
                             .to_string(), {}.index(cannolib::Value::Number(\
                             cannolib::NumericType::Integer({}))));\n", id,
-                            value_local, ndx).as_bytes()).unwrap();
+                            packed_values, ndx).as_bytes()).unwrap();
                     },
                     _ => unimplemented!()
                 }
             }
         },
-        _ => unimplemented!()
+        _ => panic!("unable to unpack values")
     }
     Ok(())
 }
