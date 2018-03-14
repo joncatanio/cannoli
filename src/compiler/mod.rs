@@ -891,8 +891,8 @@ fn output_expr_cmp(outfile: &mut File, indent: usize, expr: &Expression)
         match cmp_iter.next() {
             Some((op, comparator)) => {
                 let cmp_local = output_expr(outfile, indent, comparator)?;
-                output.push_str(&format!(" {} {})", output_cmp_operator(op)?,
-                    cmp_local));
+                output.push_str(&format!("{})", output_cmp_operator(op,
+                    &cmp_local)?));
 
                 if let Some(_) = cmp_iter.peek() {
                     let cmp_local = output_expr(outfile, indent, comparator)?;
@@ -1223,21 +1223,21 @@ fn output_operator(op: &Operator)
 
 // TODO I'll have to do something interesting for is/in, maybe append a
 // function call to the LHS Value and wrap the RHS in parens.
-fn output_cmp_operator(op: &CmpOperator)
+fn output_cmp_operator(op: &CmpOperator, val: &Local)
     -> Result<String, CompilerError> {
     let op_str = match *op {
-        CmpOperator::EQ => "==",
-        CmpOperator::NE => "!=",
-        CmpOperator::LT => "<",
-        CmpOperator::LE => "<=",
-        CmpOperator::GT => ">",
-        CmpOperator::GE => ">=",
+        CmpOperator::EQ => format!(" == {}", val),
+        CmpOperator::NE => format!(" != {}", val),
+        CmpOperator::LT => format!(" < {}", val),
+        CmpOperator::LE => format!(" <= {}", val),
+        CmpOperator::GT => format!(" > {}", val),
+        CmpOperator::GE => format!(" >= {}", val),
         CmpOperator::Is => unimplemented!(),
         CmpOperator::IsNot => unimplemented!(),
-        CmpOperator::In => unimplemented!(),
-        CmpOperator::NotIn => unimplemented!()
+        CmpOperator::In => format!(".contained_in(&{})", val),
+        CmpOperator::NotIn => format!(".not_contained_in(&{})", val)
     };
-    Ok(op_str.to_string())
+    Ok(op_str)
 }
 
 // TODO implement recursive logic for target unpacking, currently this only
