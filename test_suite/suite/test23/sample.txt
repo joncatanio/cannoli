@@ -1,0 +1,8 @@
+this
+is
+a test
+file
+it
+will be
+read by
+test.py

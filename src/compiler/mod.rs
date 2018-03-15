@@ -27,8 +27,18 @@ lazy_static! {
     static ref MOD_IMPORTS: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
     /// Path to the root directory of the src files determined by the main mod
     static ref SRC_ROOT: Mutex<String> = Mutex::new(String::new());
+    /// All of the built-in modules provided by Python
+    static ref BUILTIN_MODS: HashSet<&'static str> = init_modules();
 }
 
+fn init_modules() -> HashSet<&'static str> {
+    let mut modules = HashSet::new();
+    modules.insert("sys");
+    modules.insert("math");
+    modules
+}
+
+/// Starts compilation of a module
 pub fn compile(file: &str, opt_args: Option<&ArgMatches>)
     -> Result<(), CompilerError> {
     let (src_root, module) = util::get_file_prefix(file)?;
@@ -251,7 +261,8 @@ fn output_stmt(outfile: &mut File, class_scope: bool, indent: usize,
         Statement::Delete { .. } => unimplemented!(),
         Statement::Assign { .. } => output_stmt_assign(outfile,
             class_scope, indent, stmt),
-        Statement::AugAssign { .. } => unimplemented!(),
+        Statement::AugAssign { .. } => output_stmt_aug_assign(outfile,
+            class_scope, indent, stmt),
         Statement::AnnAssign { .. } => unimplemented!(),
         Statement::For { .. } => output_stmt_for(outfile, indent, stmt),
         Statement::While { .. } => output_stmt_while(outfile, indent, stmt),
@@ -397,7 +408,43 @@ fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
     // but only work on lists and dicts.
     let value_local = output_expr(outfile, indent, value)?;
     for target in targets.iter() {
-        unpack_values(outfile, indent, &value_local, target)?;
+        unpack_values(outfile, indent, Some(&prefix), &value_local, target)?;
+    }
+    Ok(())
+}
+
+// TODO ignores class_scope for now, I don't know if it even works in Python.
+fn output_stmt_aug_assign(outfile: &mut File, class_scope: bool, indent: usize,
+    stmt: &Statement) -> Result<(), CompilerError> {
+    let (target, op, value) = match *stmt {
+        Statement::AugAssign { ref target, ref op, ref value } =>
+            (target, op, value),
+        _ => unreachable!()
+    };
+    let mut prefix = String::new();
+
+    if class_scope {
+        prefix.push_str("cannoli_object_tbl");
+    } else {
+        prefix.push_str("cannoli_scope_list.last_mut().unwrap().borrow_mut()");
+    }
+
+    let value_local = output_expr(outfile, indent, value)?;
+    match *target {
+        Expression::Name { ref id, .. } => {
+            let local = Local::new();
+
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write_all(format!("let mut {} = cannolib::lookup_value(\
+                &cannoli_scope_list, \"{}\");\n", local, id)
+                .as_bytes()).unwrap();
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
+                .borrow_mut().insert(\"{}\".to_string(), {});\n", id,
+                output_operator(&local, op, &value_local)?)
+                .as_bytes()).unwrap();
+        },
+        _ => panic!("illegal expression for augmented assignment")
     }
     Ok(())
 }
@@ -425,7 +472,7 @@ fn output_stmt_for(outfile: &mut File, indent: usize, stmt: &Statement)
         {}.next() {{ val }} else {{ break }};\n", next_local,
         iter_local).as_bytes()).unwrap();
 
-    unpack_values(outfile, indent + 1, &next_local, target)?;
+    unpack_values(outfile, indent + 1, None, &next_local, target)?;
     output_stmts(outfile, false, indent + 1, body)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -491,7 +538,7 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
 
     // closing decorator
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write_all("}\n".as_bytes()).unwrap();
+    outfile.write_all("}".as_bytes()).unwrap();
 
     // check for elif/else
     if !orelse.is_empty() {
@@ -499,7 +546,10 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
         output_stmts(outfile, false, indent + 1, orelse)?;
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("}\n".as_bytes()).unwrap();
+    } else {
+        outfile.write_all("\n".as_bytes()).unwrap();
     }
+
     Ok(())
 }
 
@@ -518,6 +568,14 @@ fn output_stmt_import(outfile: &mut File, indent: usize, stmt: &Statement)
             Some(ref alias) => alias,
             None => name
         };
+
+        if BUILTIN_MODS.contains(&name[..]) {
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
+                .borrow_mut().insert(\"{}\".to_string(), cannolib::builtin::{}\
+                ::import_module());\n", alias, name).as_bytes()).unwrap();
+            return Ok(())
+        }
 
         queue_module(name);
 
@@ -816,7 +874,7 @@ fn output_nested_listcomp(outfile: &mut File, indent: usize, list_local: &Local,
     outfile.write_all(format!("let mut {} = if let Some(val) = \
         {}.next() {{ val }} else {{ break }};\n", next_local,
         iter_local).as_bytes()).unwrap();
-    unpack_values(outfile, indent + 1, &next_local, target)?;
+    unpack_values(outfile, indent + 1, None, &next_local, target)?;
 
     let mut conds = vec![];
     for cond in ifs.iter() {
@@ -1239,14 +1297,18 @@ fn output_cmp_operator(op: &CmpOperator, val: &Local)
 
 // TODO add list support when needed, should be just like Tuples
 /// Tail-recursive function that recursively unpacks values.
-fn unpack_values(outfile: &mut File, indent: usize, packed_values: &Local,
-    target: &Expression) -> Result<(), CompilerError> {
+fn unpack_values(outfile: &mut File, indent: usize, scope: Option<&str>,
+    packed_values: &Local, target: &Expression) -> Result<(), CompilerError> {
+    // Default is cannoli_scope_list
+    let scope = match scope {
+        Some(s) => s,
+        None => "cannoli_scope_list.last_mut().unwrap().borrow_mut()"
+    };
     match *target {
         Expression::Name { ref id, .. } => {
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-            outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
-                .borrow_mut().insert(\"{}\".to_string(), {});\n", id,
-                packed_values).as_bytes()).unwrap();
+            outfile.write_all(format!("{}.insert(\"{}\".to_string(), {});\n",
+                scope, id, packed_values).as_bytes()).unwrap();
         },
         Expression::Attribute { ref value, ref attr, .. } => {
             let base_local = output_expr(outfile, indent, value)?;
@@ -1263,11 +1325,10 @@ fn unpack_values(outfile: &mut File, indent: usize, packed_values: &Local,
                     Expression::Name { ref id, .. } => {
                         outfile.write(INDENT.repeat(indent).as_bytes())
                             .unwrap();
-                        outfile.write_all(format!("cannoli_scope_list.\
-                            last_mut().unwrap().borrow_mut().insert(\"{}\"\
+                        outfile.write_all(format!("{}.insert(\"{}\"\
                             .to_string(), {}.index(cannolib::Value::Number(\
-                            cannolib::NumericType::Integer({}))));\n", id,
-                            packed_values, ndx).as_bytes()).unwrap();
+                            cannolib::NumericType::Integer({}))));\n", scope,
+                            id, packed_values, ndx).as_bytes()).unwrap();
                     },
                     Expression::Tuple { .. } => {
                         let local = Local::new();
@@ -1278,7 +1339,8 @@ fn unpack_values(outfile: &mut File, indent: usize, packed_values: &Local,
                             cannolib::Value::Number(cannolib::NumericType::\
                             Integer({})));\n", local, packed_values, ndx)
                             .as_bytes()).unwrap();
-                        unpack_values(outfile, indent, &local, elt)?;
+                        unpack_values(outfile, indent, Some(scope), &local,
+                            elt)?;
                     },
                     _ => unimplemented!()
                 }
