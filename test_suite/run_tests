@@ -6,6 +6,9 @@ RUST_CRATE=sandbox
 PYTHON=python3
 
 run_test() {
+   # remove all out files first
+   rm $TEST_DIR/test*/*.out
+
    f=$1
    printf "\n\033[33;93m"
    echo "Testing: '$f'"
@@ -31,7 +34,7 @@ run_test() {
    fi
    cd ..
 
-   $RUST_CRATE/target/release/$RUST_CRATE > test.out
+   $RUST_CRATE/target/release/$RUST_CRATE > "$f"/test.out
    STATUS=$?
    if [[ $STATUS -eq 0 ]]; then
       printf "\033[33;32m"

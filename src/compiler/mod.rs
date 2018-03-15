@@ -227,6 +227,10 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
     outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
         .borrow_mut().insert(\"__name__\".to_string(), cannolib::Value::Str(\
         \"{}\".to_string()));\n", module).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
+    outfile.write_all("cannoli_scope_list.last_mut().unwrap().borrow_mut()\
+        .insert(\"__module__\".to_string(), cannolib::Value::Bool(true));\n"
+        .as_bytes()).unwrap();
 
     output_stmts(outfile, false, 2, body)?;
 
@@ -306,8 +310,9 @@ fn output_stmt_funcdef(outfile: &mut File, class_scope: bool, indent: usize,
         .as_bytes()).unwrap();
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write(format!("let mut {} = cannolib::Value::Function(std::rc::Rc\
-        ::new(move |cannoli_func_args: Vec<cannolib::Value>| \
-        -> cannolib::Value {{\n", local).as_bytes()).unwrap();
+        ::new(move |cannoli_func_args: Vec<cannolib::Value>, mut kwargs: \
+        std::collections::HashMap<String, cannolib::Value>| -> cannolib::Value \
+        {{\n", local).as_bytes()).unwrap();
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
     outfile.write("let mut cannoli_scope_list = move_scope.clone();\n"
         .as_bytes()).unwrap();
@@ -317,6 +322,9 @@ fn output_stmt_funcdef(outfile: &mut File, class_scope: bool, indent: usize,
 
     // setup parameters
     output_parameters(outfile, indent + 1, args)?;
+    outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+    outfile.write("cannoli_scope_list.last_mut().unwrap().borrow_mut()\
+        .extend(kwargs);\n".as_bytes()).unwrap();
     output_stmts(outfile, false, indent + 1, body)?;
 
     // output default return value (None) and closing bracket
@@ -349,7 +357,7 @@ fn output_stmt_classdef(outfile: &mut File, indent: usize, stmt: &Statement)
 
     // Add meta information into the table
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write(format!("cannoli_object_tbl.insert(\"__class__\"\
+    outfile.write(format!("cannoli_object_tbl.insert(\"__name__\"\
         .to_string(), cannolib::Value::Str(\"{}\".to_string()));\n",
         name).as_bytes()).unwrap();
 
@@ -966,12 +974,25 @@ fn output_expr_cmp(outfile: &mut File, indent: usize, expr: &Expression)
 fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
     -> Result<Local, CompilerError> {
     let mut output = String::new();
-    let (func, args, _keywords) = match *expr {
+    let (func, args, keywords) = match *expr {
         Expression::Call { ref func, ref args, ref keywords } =>
             (func, args, keywords),
         _ => unreachable!()
     };
     let local = Local::new();
+
+    output.push_str(&INDENT.repeat(indent));
+    output.push_str("let mut kwargs = std::collections::HashMap::new();\n");
+    for keyword in keywords.iter() {
+        let (arg, value) = match *keyword {
+            Keyword::Keyword { ref arg, ref value } => (arg.clone(), value)
+        };
+        let kw_local = output_expr(outfile, indent, value)?;
+
+        output.push_str(&INDENT.repeat(indent));
+        output.push_str(&format!("kwargs.insert(\"{}\".to_string(), {});\n",
+            arg.unwrap(), kw_local));
+    }
 
     output.push_str(&INDENT.repeat(indent));
     match **func {
@@ -1001,7 +1022,7 @@ fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
             None => break
         }
     }
-    output.push_str("]);\n");
+    output.push_str("], kwargs);\n");
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
@@ -1239,8 +1260,8 @@ fn output_parameters(outfile: &mut File, indent: usize, params: &Arguments)
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
             .borrow_mut().insert(\"{}\".to_string(), cannoli_func_args_iter\
-            .next().expect(\"expected {} positional args\"));\n", arg_name,
-            args.len()).as_bytes()).unwrap();
+            .next().unwrap_or(cannolib::Value::None));\n", arg_name)
+            .as_bytes()).unwrap();
     }
 
     outfile.flush().unwrap();

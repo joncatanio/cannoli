@@ -7,6 +7,9 @@ class Second:
    def __init__(self):
       self.y = 10
 
+   def some_func(self):
+      print("funky funk")
+
    def print_content(self):
       print("print_content -- self.y: " + str(self.y))
 

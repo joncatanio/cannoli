@@ -15,4 +15,5 @@ __pycache__/
 
 # Test output
 *.out
+output.txt
 test_suite/sandbox/src/
