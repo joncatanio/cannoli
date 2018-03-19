@@ -721,33 +721,69 @@ fn output_expr(outfile: &mut File, indent: usize, expr: &Expression)
 
 fn output_expr_boolop(outfile: &mut File, indent: usize, expr: &Expression)
     -> Result<Local, CompilerError> {
-    let mut output = String::new();
     let (op, values) = match *expr {
         Expression::BoolOp { ref op, ref values } => (op, values),
         _ => unreachable!()
     };
     let mut expr_iter = values.iter();
     let local = Local::new();
-
-    // A BoolOp should always have at least two values, in order to work with
-    // the Rust && and || ops the operands must be `bool`s, each expression
-    // will output their bool value and the entire expression will be wrapped
-    // back into a Value::Bool. There is room for optimization with this
-    // especially if there is a large chain of BoolOps.
     let expr_local = output_expr(outfile, indent, expr_iter.next().unwrap())?;
-    output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let mut {} = cannolib::Value::Bool(({})\
-        .to_bool()", local, expr_local));
 
-    for expr in expr_iter {
-        let expr_local = output_expr(outfile, indent, expr)?;
-        output.push_str(&format!(" {} ({}).to_bool()",
-            output_bool_operator(op)?, expr_local));
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    match *op {
+        BoolOperator::And => outfile.write_all(format!("let mut {} = \
+            if {}.to_bool() {{\n", local, expr_local).as_bytes()).unwrap(),
+        BoolOperator::Or  => outfile.write_all(format!("let mut {} = \
+            if !{}.to_bool() {{\n", local, expr_local).as_bytes()).unwrap(),
     }
-    output.push_str(");\n");
 
-    outfile.write_all(output.as_bytes()).unwrap();
+    rec_output_bool_op(outfile, indent + 1, op, &expr_local, expr_iter)?;
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    match *op {
+        BoolOperator::And => outfile.write_all("} else { \
+            cannolib::Value::Bool(false) };\n".as_bytes()).unwrap(),
+        BoolOperator::Or  => outfile.write_all("} else { \
+            cannolib::Value::Bool(true) };\n".as_bytes()).unwrap()
+    }
+
     Ok(local)
+}
+
+/// Recursively outputs if-expressions that mirror short-circuiting
+/// functionality, this has to be done due to how expressions are being written
+/// out. It's certainly not ideal but must be done.
+fn rec_output_bool_op(outfile: &mut File, indent: usize, op: &BoolOperator,
+    last: &Local, mut iter: Iter<Expression>) -> Result<(), CompilerError> {
+    let expr = match iter.next() {
+        Some(expr) => expr,
+        None => {
+            outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+            outfile.write(format!("cannolib::Value::Bool({}.to_bool())\n", last)
+                .as_bytes()).unwrap();
+            return Ok(())
+        }
+    };
+    let expr_local = output_expr(outfile, indent, expr)?;
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    match *op {
+        BoolOperator::And => outfile.write_all(format!("if {}.to_bool() {{\n",
+            expr_local).as_bytes()).unwrap(),
+        BoolOperator::Or  => outfile.write_all(format!("if !{}.to_bool() {{\n",
+            expr_local).as_bytes()).unwrap(),
+    }
+
+    rec_output_bool_op(outfile, indent + 1, op, &expr_local, iter)?;
+
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    match *op {
+        BoolOperator::And => outfile.write_all("} else { \
+            cannolib::Value::Bool(false) }\n".as_bytes()).unwrap(),
+        BoolOperator::Or  => outfile.write_all("} else { \
+            cannolib::Value::Bool(true) }\n".as_bytes()).unwrap()
+    }
+    Ok(())
 }
 
 fn output_expr_binop(outfile: &mut File, indent: usize, expr: &Expression)
@@ -1266,15 +1302,6 @@ fn output_parameters(outfile: &mut File, indent: usize, params: &Arguments)
 
     outfile.flush().unwrap();
     Ok(())
-}
-
-fn output_bool_operator(op: &BoolOperator)
-    -> Result<String, CompilerError> {
-    let op_str = match *op {
-        BoolOperator::And => "&&",
-        BoolOperator::Or  => "||",
-    };
-    Ok(op_str.to_string())
 }
 
 fn output_operator(lft: &Local, op: &Operator, rht: &Local)

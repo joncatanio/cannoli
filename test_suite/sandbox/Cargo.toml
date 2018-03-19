@@ -5,3 +5,7 @@ authors = ["Jon Catanio <joncatanio@gmail.com>"]
 
 [dependencies]
 cannolib = { path = "../../../cannolib" }
+
+[profile.release]
+debug = true
+codegen-units = 1
