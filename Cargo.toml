@@ -7,6 +7,7 @@ authors = ["Jon Catanio <joncatanio@gmail.com>",
 [dependencies]
 unicode-segmentation = "0.1.2"
 unicode_names = { git = 'https://github.com/joncatanio/unicode_names', branch = 'fix-for-rust-1-24' }
+cannolib = { path = "../cannolib" }
 regex = "0.1.8"
 lazy_static = "1.0.0"
 clap = "2.29.0"

@@ -9,6 +9,7 @@ use std::iter::Peekable;
 use std::slice::Iter;
 use std::collections::HashSet;
 use clap::ArgMatches;
+use cannolib;
 
 use super::lexer::Lexer;
 use super::parser;
@@ -170,15 +171,16 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
 
     // Gather the current scope elements and create the scope Vec that will be
     // used in this compiler to output a more efficient scoping system.
-    let scope = vec![util::gather_builtins(), util::gather_scope(body)?];
+    let scope = vec![cannolib::builtin::get_mapping(),
+        util::gather_scope(body)?];
     println!("Scope Map: {:?}", scope);
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("pub fn execute() {\n".as_bytes()).unwrap();
     outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("let mut cannoli_scope_list: \
-        Vec<std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, \
-        cannolib::Value>>>> = Vec::new();\n".as_bytes()).unwrap();
+        Vec<std::rc::Rc<std::cell::RefCell<Vec<cannolib::Value>>>> = \
+        Vec::new();\n".as_bytes()).unwrap();
     outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("cannoli_scope_list.push(\
         std::rc::Rc::new(std::cell::RefCell::new(\

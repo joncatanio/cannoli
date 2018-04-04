@@ -3,7 +3,7 @@ pub mod main {
     use cannolib;
     use std;
     pub fn execute() {
-        let mut cannoli_scope_list: Vec<std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, cannolib::Value>>>> = Vec::new();
+        let mut cannoli_scope_list: Vec<std::rc::Rc<std::cell::RefCell<Vec<cannolib::Value>>>> = Vec::new();
         cannoli_scope_list.push(std::rc::Rc::new(std::cell::RefCell::new(cannolib::builtin::get_scope())));
         cannoli_scope_list.push(std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new())));
         cannoli_scope_list.last_mut().unwrap().borrow_mut().insert("__name__".to_string(), cannolib::Value::Str("__main__".to_string()));

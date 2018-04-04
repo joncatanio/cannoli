@@ -118,25 +118,6 @@ fn unpack_assign_targets(scope: &mut Vec<String>, target: &Expression)
     Ok(())
 }
 
-pub fn gather_builtins() -> HashMap<String, usize> {
-    let mut vec = Vec::new();
-    let mut map = HashMap::new();
-
-    vec.push("print".to_string());
-    vec.push("str".to_string());
-    vec.push("len".to_string());
-    vec.push("min".to_string());
-    vec.push("int".to_string());
-    vec.push("float".to_string());
-    vec.push("enumerate".to_string());
-    vec.push("open".to_string());
-    vec.into_iter().enumerate().for_each(|(ndx, key)| {
-        map.insert(key, ndx);
-    });
-
-    map
-}
-
 /// Traverses the compiler's scope list to find a value, if the value is found
 /// a tuple (scope_position, value_offset) is returned.
 pub fn lookup_value(scope: &Vec<HashMap<String, usize>>, id: &str)
