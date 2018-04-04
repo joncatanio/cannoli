@@ -168,6 +168,11 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     // Output per-module headers
     output_module_headers(outfile, 1)?;
 
+    // Gather the current scope elements and create the scope Vec that will be
+    // used in this compiler to output a more efficient scoping system.
+    let scope = vec![util::gather_builtins(), util::gather_scope(body)?];
+    println!("Scope Map: {:?}", scope);
+
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("pub fn execute() {\n".as_bytes()).unwrap();
     outfile.write(INDENT.repeat(2).as_bytes()).unwrap();

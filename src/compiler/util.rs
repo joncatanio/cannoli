@@ -1,5 +1,7 @@
 use regex::Regex;
+use std::collections::HashMap;
 
+use ::parser::ast::*;
 use super::errors::CompilerError;
 
 /// Returns the root directory of the given file and the file name sans ext
@@ -21,6 +23,130 @@ pub fn get_file_prefix(file: &str) -> Result<(String, String), CompilerError> {
         return Err(CompilerError::IOError(format!("unsupported filetype for \
             file: {}", file)))
     }
+}
+
+// Scope gathering helper functions
+/// This function gathers id's that will be instantiated in the current scope
+/// and orders them for the compiler to use when looking up or assigning values
+pub fn gather_scope(stmts: &Vec<Statement>)
+    -> Result<HashMap<String, usize>, CompilerError> {
+    let mut scope_list = Vec::new();
+    let mut scope_map = HashMap::new();
+
+    rec_gather_scope(&mut scope_list, stmts)?;
+    scope_list.into_iter().enumerate().for_each(|(ndx, key)| {
+        scope_map.insert(key, ndx);
+    });
+
+    Ok(scope_map)
+}
+
+/// Recursively identifies statements that will modify a single level of scope
+fn rec_gather_scope(scope: &mut Vec<String>, stmts: &Vec<Statement>)
+    -> Result<(), CompilerError> {
+    for stmt in stmts.iter() {
+        match *stmt {
+            Statement::FunctionDef { ref name, .. } => {
+                scope.push(name.clone())
+            },
+            Statement::ClassDef { ref name, .. } => {
+                scope.push(name.clone())
+            },
+            Statement::Assign { ref targets, .. } => {
+                for target in targets.iter() {
+                    unpack_assign_targets(scope, target)?;
+                }
+            },
+            Statement::For { ref target, iter: _, ref body, ref orelse } => {
+                unpack_assign_targets(scope, target)?;
+                rec_gather_scope(scope, body)?;
+                rec_gather_scope(scope, orelse)?;
+            },
+            Statement::While { test: _, ref body, ref orelse } => {
+                rec_gather_scope(scope, body)?;
+                rec_gather_scope(scope, orelse)?;
+            },
+            Statement::If { test: _, ref body, ref orelse } => {
+                rec_gather_scope(scope, body)?;
+                rec_gather_scope(scope, orelse)?;
+            },
+            Statement::Import { ref names } => {
+                for name in names.iter() {
+                    let (name, asname) = match *name {
+                        Alias::Alias { ref name, ref asname } => (name, asname)
+                    };
+                    let alias = match *asname {
+                        Some(ref alias) => alias,
+                        None => name
+                    };
+
+                    scope.push(alias.clone());
+                }
+            },
+            Statement::ImportFrom { .. } => {
+                // TODO, if we wanted to support import from we are going to
+                // run into issues with wildcards. We would need to gather
+                // the scope of the entire module.
+                unimplemented!();
+            },
+            _ => ()
+        }
+    }
+
+    Ok(())
+}
+
+fn unpack_assign_targets(scope: &mut Vec<String>, target: &Expression)
+    -> Result<(), CompilerError> {
+    match *target {
+        Expression::Name { ref id, .. } => scope.push(id.clone()),
+        Expression::List { .. } => unimplemented!(),
+        Expression::Tuple { ref elts, .. } => {
+            for elt in elts.iter() {
+                match *elt {
+                    Expression::Name { ref id, .. } => scope.push(id.clone()),
+                    Expression::Tuple { .. } => {
+                        unpack_assign_targets(scope, elt)?;
+                    },
+                    _ => unimplemented!()
+                }
+            }
+        },
+        _ => ()
+    }
+
+    Ok(())
+}
+
+pub fn gather_builtins() -> HashMap<String, usize> {
+    let mut vec = Vec::new();
+    let mut map = HashMap::new();
+
+    vec.push("print".to_string());
+    vec.push("str".to_string());
+    vec.push("len".to_string());
+    vec.push("min".to_string());
+    vec.push("int".to_string());
+    vec.push("float".to_string());
+    vec.push("enumerate".to_string());
+    vec.push("open".to_string());
+    vec.into_iter().enumerate().for_each(|(ndx, key)| {
+        map.insert(key, ndx);
+    });
+
+    map
+}
+
+/// Traverses the compiler's scope list to find a value, if the value is found
+/// a tuple (scope_position, value_offset) is returned.
+pub fn lookup_value(scope: &Vec<HashMap<String, usize>>, id: &str)
+    -> Result<(usize, usize), CompilerError> {
+    for (ndx, tbl) in scope.iter().enumerate().rev() {
+        if let Some(offset) = tbl.get(id) {
+            return Ok((ndx, *offset))
+        }
+    }
+    Err(CompilerError::NameError(id.to_string()))
 }
 
 lazy_static! {
