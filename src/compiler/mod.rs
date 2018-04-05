@@ -393,8 +393,8 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: Vec<HashMap<String,
             {});\n", name, local).as_bytes()).unwrap();
     } else {
         let (ndx, offset) = util::lookup_value(&scope, name)?;
-        outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = {};\n",
-            ndx, offset, local).as_bytes()).unwrap();
+        outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = {}; \
+            // func: '{}'\n", ndx, offset, local, name).as_bytes()).unwrap();
     }
 
     outfile.flush().unwrap();
@@ -426,8 +426,8 @@ fn output_stmt_classdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     let (ndx, offset) = util::lookup_value(&scope, name)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
-        cannolib::Value::Class {{ tbl: cannoli_object_tbl }};\n", ndx, offset)
-        .as_bytes()).unwrap();
+        cannolib::Value::Class {{ tbl: cannoli_object_tbl }}; // class: '{}'\n",
+        ndx, offset, name).as_bytes()).unwrap();
 
     Ok(())
 }
@@ -641,8 +641,8 @@ fn output_stmt_import(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
         if BUILTIN_MODS.contains(&name[..]) {
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
             outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
-                cannolib::builtin::{}::import_module();\n", ndx, offset, name)
-                .as_bytes()).unwrap();
+                cannolib::builtin::{}::import_module(); // mod alias: '{}'\n",
+                ndx, offset, name, alias).as_bytes()).unwrap();
             return Ok(())
         }
 
@@ -653,7 +653,8 @@ fn output_stmt_import(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
             .as_bytes()).unwrap();
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
-            {}::import_module();\n", ndx, offset, name).as_bytes()).unwrap();
+            {}::import_module(); // mod alias: '{}'\n", ndx, offset, name,
+            alias).as_bytes()).unwrap();
     }
 
     outfile.flush().unwrap();
@@ -1399,8 +1400,8 @@ fn output_parameters(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
-            cannoli_func_args_iter.next().unwrap_or(cannolib::Value::None);\n",
-            ndx, offset).as_bytes()).unwrap();
+            cannoli_func_args_iter.next().unwrap_or(cannolib::Value::None); \
+            // param_name: '{}'\n", ndx, offset, arg_name).as_bytes()).unwrap();
     }
 
     outfile.flush().unwrap();
@@ -1466,8 +1467,8 @@ fn unpack_values(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
                 None => {
                     let (ndx, offset) = util::lookup_value(&scope, id)?;
                     outfile.write_all(format!("cannoli_scope_list[{}].borrow\
-                        _mut()[{}] = {};\n", ndx, offset, packed_values)
-                        .as_bytes()).unwrap();
+                        _mut()[{}] = {}; // id: '{}'\n", ndx, offset,
+                        packed_values, id).as_bytes()).unwrap();
                 }
             }
         },
@@ -1502,8 +1503,9 @@ fn unpack_values(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
                                 outfile.write_all(format!("cannoli_scope_list[\
                                     {}].borrow_mut()[{}] = {}.index(cannolib::\
                                     Value::Number(cannolib::NumericType::\
-                                    Integer({})));\n", index, offset,
-                                    packed_values, ndx).as_bytes()).unwrap();
+                                    Integer({}))); // id: '{}'\n", index,
+                                    offset, packed_values, ndx, id)
+                                    .as_bytes()).unwrap();
                             }
                         }
                     },
