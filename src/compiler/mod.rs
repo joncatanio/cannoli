@@ -172,7 +172,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     // Gather the current scope elements and create the scope Vec that will be
     // used in this compiler to output a more efficient scoping system.
     let mut scope = vec![cannolib::builtin::get_mapping()];
-    let mut current_scope = util::gather_scope(body)?;
+    let mut current_scope = util::gather_scope(body, 0)?;
 
     // Insert meta data into the scope on the compiler side, this is also
     // setup below to be used at runtime. Then appened the updated scope.
@@ -180,7 +180,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     current_scope.insert("__name__".to_string(), offset);
     scope.push(current_scope);
 
-    let capacity = scope[1].len();
+    let capacity = scope.last().unwrap().len();
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("pub fn execute() {\n".as_bytes()).unwrap();
@@ -327,8 +327,8 @@ fn output_stmt(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     }
 }
 
-fn output_stmt_funcdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
-    class_scope: bool, indent: usize, stmt: &Statement)
+fn output_stmt_funcdef(outfile: &mut File, mut scope: Vec<HashMap<String,
+    usize>>, class_scope: bool, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (name, args, body, _decorator_list, _returns) = match *stmt {
         Statement::FunctionDef { ref name, ref args, ref body,
@@ -336,14 +336,13 @@ fn output_stmt_funcdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
             (name, args, body, decorator_list, returns),
         _ => unreachable!()
     };
-    let mut prefix = String::new();
     let local = Local::new();
+    let param_map = util::gather_func_params(args, 0)?;
+    let mut current_scope = util::gather_scope(body, param_map.len())?;
 
-    if class_scope {
-        prefix.push_str("cannoli_object_tbl");
-    } else {
-        prefix.push_str("cannoli_scope_list.last_mut().unwrap().borrow_mut()");
-    }
+    current_scope.extend(param_map);
+    scope.push(current_scope);
+    let capacity = scope.last().unwrap().len();
 
     // Setup function signature and append to the scope list
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -357,15 +356,28 @@ fn output_stmt_funcdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
     outfile.write("let mut cannoli_scope_list = move_scope.clone();\n"
         .as_bytes()).unwrap();
+
+    // Append a fresh scope_list with a defined capacity
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
-    outfile.write("cannoli_scope_list.push(std::rc::Rc::new(std::cell::RefCell\
-        ::new(std::collections::HashMap::new())));\n".as_bytes()).unwrap();
+    outfile.write_all(format!("let mut scope_list_setup: Vec<cannolib::Value> \
+        = Vec::with_capacity({});\n", capacity).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+    outfile.write_all(format!("scope_list_setup.resize({}, \
+        cannolib::Value::Undefined);\n", capacity).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+    outfile.write_all("cannoli_scope_list.push(\
+        std::rc::Rc::new(std::cell::RefCell::new(scope_list_setup)));\n"
+        .as_bytes()).unwrap();
 
     // setup parameters
     output_parameters(outfile, scope.clone(), indent + 1, args)?;
-    outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
-    outfile.write("cannoli_scope_list.last_mut().unwrap().borrow_mut()\
-        .extend(kwargs);\n".as_bytes()).unwrap();
+
+    // TODO not outputting kwargs right now since it isn't needed for the
+    // ray tracer and seems to be pretty complex. It might be something we axe.
+    //outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+    //outfile.write("cannoli_scope_list.last_mut().unwrap().borrow_mut()\
+    //    .extend(kwargs);\n".as_bytes()).unwrap();
+
     output_stmts(outfile, scope.clone(), false, indent + 1, body)?;
 
     // output default return value (None) and closing bracket
@@ -373,11 +385,19 @@ fn output_stmt_funcdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     outfile.write("cannolib::Value::None\n".as_bytes()).unwrap();
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write("}));\n".as_bytes()).unwrap();
-    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write(format!("{}.insert(\"{}\".to_string(), {});\n",
-        prefix, name, local).as_bytes()).unwrap();
-    outfile.flush().unwrap();
 
+    // assign the function pointer to either the class scope or default scope
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    if class_scope {
+        outfile.write(format!("cannoli_object_tbl.insert(\"{}\".to_string(), \
+            {});\n", name, local).as_bytes()).unwrap();
+    } else {
+        let (ndx, offset) = util::lookup_value(&scope, name)?;
+        outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = {};\n",
+            ndx, offset, local).as_bytes()).unwrap();
+    }
+
+    outfile.flush().unwrap();
     Ok(())
 }
 
@@ -1360,13 +1380,12 @@ fn output_parameters(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
         let (arg_name, _arg_annotation) = match *arg {
             Arg::Arg { ref arg, ref annotation } => (arg, annotation)
         };
-        //let mangled_name = util::mangle_name(&arg_name);
+        let (ndx, offset) = util::lookup_value(&scope, arg_name)?;
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-        outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
-            .borrow_mut().insert(\"{}\".to_string(), cannoli_func_args_iter\
-            .next().unwrap_or(cannolib::Value::None));\n", arg_name)
-            .as_bytes()).unwrap();
+        outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
+            cannoli_func_args_iter.next().unwrap_or(cannolib::Value::None);\n",
+            ndx, offset).as_bytes()).unwrap();
     }
 
     outfile.flush().unwrap();

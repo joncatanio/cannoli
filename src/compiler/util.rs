@@ -1,5 +1,5 @@
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ::parser::ast::*;
 use super::errors::CompilerError;
@@ -28,29 +28,32 @@ pub fn get_file_prefix(file: &str) -> Result<(String, String), CompilerError> {
 // Scope gathering helper functions
 /// This function gathers id's that will be instantiated in the current scope
 /// and orders them for the compiler to use when looking up or assigning values
-pub fn gather_scope(stmts: &Vec<Statement>)
+pub fn gather_scope(stmts: &Vec<Statement>, start_ndx: usize)
     -> Result<HashMap<String, usize>, CompilerError> {
-    let mut scope_list = Vec::new();
+    let mut scope_set = HashSet::new();
     let mut scope_map = HashMap::new();
 
-    rec_gather_scope(&mut scope_list, stmts)?;
-    scope_list.into_iter().enumerate().for_each(|(ndx, key)| {
-        scope_map.insert(key, ndx);
-    });
+    rec_gather_scope(&mut scope_set, stmts)?;
+
+    let end_ndx = start_ndx + scope_set.len();
+    (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
+        .for_each(|(ndx, key)| {
+            scope_map.insert(key, ndx);
+        });
 
     Ok(scope_map)
 }
 
 /// Recursively identifies statements that will modify a single level of scope
-fn rec_gather_scope(scope: &mut Vec<String>, stmts: &Vec<Statement>)
+fn rec_gather_scope(scope: &mut HashSet<String>, stmts: &Vec<Statement>)
     -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
         match *stmt {
             Statement::FunctionDef { ref name, .. } => {
-                scope.push(name.clone())
+                scope.insert(name.clone());
             },
             Statement::ClassDef { ref name, .. } => {
-                scope.push(name.clone())
+                scope.insert(name.clone());
             },
             Statement::Assign { ref targets, .. } => {
                 for target in targets.iter() {
@@ -80,7 +83,7 @@ fn rec_gather_scope(scope: &mut Vec<String>, stmts: &Vec<Statement>)
                         None => name
                     };
 
-                    scope.push(alias.clone());
+                    scope.insert(alias.clone());
                 }
             },
             Statement::ImportFrom { .. } => {
@@ -96,15 +99,47 @@ fn rec_gather_scope(scope: &mut Vec<String>, stmts: &Vec<Statement>)
     Ok(())
 }
 
-fn unpack_assign_targets(scope: &mut Vec<String>, target: &Expression)
+pub fn gather_func_params(params: &Arguments, start_ndx: usize)
+    -> Result<HashMap<String, usize>, CompilerError> {
+    let mut scope_set = HashSet::new();
+    let mut scope_map = HashMap::new();
+    let (args, _vararg, _kwonlyargs, _kw_defaults, _kwarg, _defaults) =
+    match *params {
+        Arguments::Arguments { ref args, ref vararg, ref kwonlyargs,
+            ref kw_defaults, ref kwarg, ref defaults } => (args, vararg,
+            kwonlyargs, kw_defaults, kwarg, defaults)
+    };
+
+    for arg in args.iter() {
+        let arg_name = match *arg {
+            Arg::Arg { ref arg, .. } => arg
+        };
+
+        scope_set.insert(arg_name.to_string());
+    }
+
+    let end_ndx = start_ndx + scope_set.len();
+    (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
+        .for_each(|(ndx, key)| {
+            scope_map.insert(key, ndx);
+        });
+
+    Ok(scope_map)
+}
+
+fn unpack_assign_targets(scope: &mut HashSet<String>, target: &Expression)
     -> Result<(), CompilerError> {
     match *target {
-        Expression::Name { ref id, .. } => scope.push(id.clone()),
+        Expression::Name { ref id, .. } => {
+            scope.insert(id.clone());
+        },
         Expression::List { .. } => unimplemented!(),
         Expression::Tuple { ref elts, .. } => {
             for elt in elts.iter() {
                 match *elt {
-                    Expression::Name { ref id, .. } => scope.push(id.clone()),
+                    Expression::Name { ref id, .. } => {
+                        scope.insert(id.clone());
+                    },
                     Expression::Tuple { .. } => {
                         unpack_assign_targets(scope, elt)?;
                     },
