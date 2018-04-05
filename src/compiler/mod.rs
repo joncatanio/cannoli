@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::iter::Peekable;
 use std::slice::Iter;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use clap::ArgMatches;
 use cannolib;
 
@@ -171,9 +171,16 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
 
     // Gather the current scope elements and create the scope Vec that will be
     // used in this compiler to output a more efficient scoping system.
-    let scope = vec![cannolib::builtin::get_mapping(),
-        util::gather_scope(body)?];
-    println!("Scope Map: {:?}", scope);
+    let mut scope = vec![cannolib::builtin::get_mapping()];
+    let mut current_scope = util::gather_scope(body)?;
+
+    // Insert meta data into the scope on the compiler side, this is also
+    // setup below to be used at runtime. Then appened the updated scope.
+    let offset = current_scope.len();
+    current_scope.insert("__name__".to_string(), offset);
+    scope.push(current_scope);
+
+    let capacity = scope[1].len();
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("pub fn execute() {\n".as_bytes()).unwrap();
@@ -185,16 +192,27 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     outfile.write_all("cannoli_scope_list.push(\
         std::rc::Rc::new(std::cell::RefCell::new(\
         cannolib::builtin::get_scope())));\n".as_bytes()).unwrap();
+
+    // Append a fresh scope_list with a defined capacity
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
+    outfile.write_all(format!("let mut scope_list_setup: Vec<cannolib::Value> \
+        = Vec::with_capacity({});\n", capacity).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
+    outfile.write_all(format!("scope_list_setup.resize({}, \
+        cannolib::Value::Undefined);\n", capacity).as_bytes()).unwrap();
     outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all("cannoli_scope_list.push(\
-        std::rc::Rc::new(std::cell::RefCell::new(\
-        std::collections::HashMap::new())));\n".as_bytes()).unwrap();
-    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
-    outfile.write_all("cannoli_scope_list.last_mut().unwrap().borrow_mut()\
-        .insert(\"__name__\".to_string(), cannolib::Value::Str(\"__main__\"\
-        .to_string()));\n".as_bytes()).unwrap();
+        std::rc::Rc::new(std::cell::RefCell::new(scope_list_setup)));\n"
+        .as_bytes()).unwrap();
 
-    output_stmts(outfile, false, 2, body)?;
+    // Output metadata from the map
+    let (ndx, offset) = util::lookup_value(&scope, "__name__")?;
+    outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
+    outfile.write_all(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
+        cannolib::Value::Str(\"__main__\".to_string());\n", ndx, offset)
+        .as_bytes()).unwrap();
+
+    output_stmts(outfile, scope.clone(), false, 2, body)?;
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
@@ -202,6 +220,10 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     Ok(())
 }
 
+// TODO going to need to do something clever if we want to support modules with
+// the new vector scope optimization. Since 'import_module' returns an object
+// of the most recent scope table. When objects are optimized it might be a
+// good time to revisit modules to see if it can be done.
 fn output_module(outfile: &mut File, module: &str, ast: &Ast)
     -> Result<(), CompilerError> {
     let body = match *ast {
@@ -214,6 +236,9 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
 
     // Output per-module headers
     output_module_headers(outfile, 1)?;
+
+    // TODO remove or modify, this is a dummy var for 'output_stmts' below.
+    let scope = vec![cannolib::builtin::get_mapping()];
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("pub fn import_module() -> cannolib::Value {\n"
@@ -239,7 +264,7 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
         .insert(\"__module__\".to_string(), cannolib::Value::Bool(true));\n"
         .as_bytes()).unwrap();
 
-    output_stmts(outfile, false, 2, body)?;
+    output_stmts(outfile, scope.clone(), false, 2, body)?;
 
     outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write("let cannoli_module_tbl = cannoli_scope_list.last().unwrap()\
@@ -253,49 +278,58 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
     Ok(())
 }
 
-fn output_stmts(outfile: &mut File, class_scope: bool, indent: usize,
-    stmts: &Vec<Statement>) -> Result<(), CompilerError> {
+fn output_stmts(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    class_scope: bool, indent: usize, stmts: &Vec<Statement>)
+    -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
-        output_stmt(outfile, class_scope, indent, stmt)?;
+        output_stmt(outfile, scope.clone(), class_scope, indent, stmt)?;
     }
     Ok(())
 }
 
-fn output_stmt(outfile: &mut File, class_scope: bool, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+fn output_stmt(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    class_scope: bool, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
     match *stmt {
         Statement::FunctionDef { .. } => output_stmt_funcdef(outfile,
-            class_scope, indent, stmt),
-        Statement::ClassDef { .. } => output_stmt_classdef(outfile,
-            indent, stmt),
-        Statement::Return { .. } => output_stmt_return(outfile, indent, stmt),
+            scope.clone(), class_scope, indent, stmt),
+        Statement::ClassDef { .. } =>
+            output_stmt_classdef(outfile, scope.clone(), indent, stmt),
+        Statement::Return { .. } =>
+            output_stmt_return(outfile, scope.clone(), indent, stmt),
         Statement::Delete { .. } => unimplemented!(),
-        Statement::Assign { .. } => output_stmt_assign(outfile,
+        Statement::Assign { .. } => output_stmt_assign(outfile, scope.clone(),
             class_scope, indent, stmt),
         Statement::AugAssign { .. } => output_stmt_aug_assign(outfile,
-            class_scope, indent, stmt),
+            scope.clone(), class_scope, indent, stmt),
         Statement::AnnAssign { .. } => unimplemented!(),
-        Statement::For { .. } => output_stmt_for(outfile, indent, stmt),
-        Statement::While { .. } => output_stmt_while(outfile, indent, stmt),
-        Statement::If { .. }    => output_stmt_if(outfile, indent, stmt),
+        Statement::For { .. } =>
+            output_stmt_for(outfile, scope.clone(), indent, stmt),
+        Statement::While { .. } =>
+            output_stmt_while(outfile, scope.clone(), indent, stmt),
+        Statement::If { .. } =>
+            output_stmt_if(outfile, scope.clone(), indent, stmt),
         Statement::With { .. } => unimplemented!(),
         Statement::Raise { .. } => unimplemented!(),
         Statement::Try { .. } => unimplemented!(),
         Statement::Assert { .. } => unimplemented!(),
-        Statement::Import { .. } => output_stmt_import(outfile, indent, stmt),
-        Statement::ImportFrom { .. } => output_stmt_import_from(outfile,
-            indent, stmt),
+        Statement::Import { .. } =>
+            output_stmt_import(outfile, scope.clone(), indent, stmt),
+        Statement::ImportFrom { .. } =>
+            output_stmt_import_from(outfile, scope.clone(), indent, stmt),
         Statement::Global { .. } => unimplemented!(),
         Statement::Nonlocal { .. } => unimplemented!(),
-        Statement::Expr { .. }  => output_stmt_expr(outfile, indent, stmt),
+        Statement::Expr { .. }  =>
+            output_stmt_expr(outfile, scope.clone(), indent, stmt),
         Statement::Pass => unimplemented!(),
         Statement::Break => unimplemented!(),
         Statement::Continue => unimplemented!()
     }
 }
 
-fn output_stmt_funcdef(outfile: &mut File, class_scope: bool, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+fn output_stmt_funcdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    class_scope: bool, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
     let (name, args, body, _decorator_list, _returns) = match *stmt {
         Statement::FunctionDef { ref name, ref args, ref body,
             ref decorator_list, ref returns } =>
@@ -328,11 +362,11 @@ fn output_stmt_funcdef(outfile: &mut File, class_scope: bool, indent: usize,
         ::new(std::collections::HashMap::new())));\n".as_bytes()).unwrap();
 
     // setup parameters
-    output_parameters(outfile, indent + 1, args)?;
+    output_parameters(outfile, scope.clone(), indent + 1, args)?;
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
     outfile.write("cannoli_scope_list.last_mut().unwrap().borrow_mut()\
         .extend(kwargs);\n".as_bytes()).unwrap();
-    output_stmts(outfile, false, indent + 1, body)?;
+    output_stmts(outfile, scope.clone(), false, indent + 1, body)?;
 
     // output default return value (None) and closing bracket
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
@@ -347,8 +381,8 @@ fn output_stmt_funcdef(outfile: &mut File, class_scope: bool, indent: usize,
     Ok(())
 }
 
-fn output_stmt_classdef(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt_classdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let (name, _, _, body, _) = match *stmt {
         Statement::ClassDef { ref name, ref bases, ref keywords, ref body,
             ref decorator_list } => (name, bases, keywords, body,
@@ -360,7 +394,7 @@ fn output_stmt_classdef(outfile: &mut File, indent: usize, stmt: &Statement)
     outfile.write("let mut cannoli_object_tbl = \
         std::collections::HashMap::new();\n".as_bytes()).unwrap();
 
-    output_stmts(outfile, true, indent, body)?;
+    output_stmts(outfile, scope.clone(), true, indent, body)?;
 
     // Add meta information into the table
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -377,8 +411,8 @@ fn output_stmt_classdef(outfile: &mut File, indent: usize, stmt: &Statement)
     Ok(())
 }
 
-fn output_stmt_return(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt_return(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let value = match *stmt {
         Statement::Return { ref value } => value,
         _ => unreachable!()
@@ -386,7 +420,8 @@ fn output_stmt_return(outfile: &mut File, indent: usize, stmt: &Statement)
 
     match *value {
         Some(ref value) => {
-            let value_local = output_expr(outfile, indent, value)?;
+            let value_local = output_expr(outfile, scope.clone(), indent,
+                value)?;
 
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
             outfile.write_all(format!("return {};\n", value_local)
@@ -402,18 +437,19 @@ fn output_stmt_return(outfile: &mut File, indent: usize, stmt: &Statement)
     Ok(())
 }
 
-fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+fn output_stmt_assign(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    class_scope: bool, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
     let (targets, value) = match *stmt {
         Statement::Assign { ref targets, ref value } => (targets, value),
         _ => unreachable!()
     };
-    let mut prefix = String::new();
+    let prefix: Option<&str>;
 
     if class_scope {
-        prefix.push_str("cannoli_object_tbl");
+        prefix = Some("cannoli_object_tbl");
     } else {
-        prefix.push_str("cannoli_scope_list.last_mut().unwrap().borrow_mut()");
+        prefix = None;
     }
 
     // For each target determine if it's a Name/Attribute/Subscript and handle
@@ -421,43 +457,38 @@ fn output_stmt_assign(outfile: &mut File, class_scope: bool, indent: usize,
     // list. Attributes should call a member function on Value that modifies
     // the object's internal tbl. Subscript should also call a member function
     // but only work on lists and dicts.
-    let value_local = output_expr(outfile, indent, value)?;
+    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
     for target in targets.iter() {
-        unpack_values(outfile, indent, Some(&prefix), &value_local, target)?;
+        unpack_values(outfile, scope.clone(), indent, prefix,
+            &value_local, target)?;
     }
     Ok(())
 }
 
 // TODO ignores class_scope for now, I don't know if it even works in Python.
-fn output_stmt_aug_assign(outfile: &mut File, class_scope: bool, indent: usize,
+fn output_stmt_aug_assign(outfile: &mut File,
+    scope: Vec<HashMap<String, usize>>, class_scope: bool, indent: usize,
     stmt: &Statement) -> Result<(), CompilerError> {
     let (target, op, value) = match *stmt {
         Statement::AugAssign { ref target, ref op, ref value } =>
             (target, op, value),
         _ => unreachable!()
     };
-    let mut prefix = String::new();
 
-    if class_scope {
-        prefix.push_str("cannoli_object_tbl");
-    } else {
-        prefix.push_str("cannoli_scope_list.last_mut().unwrap().borrow_mut()");
-    }
-
-    let value_local = output_expr(outfile, indent, value)?;
+    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
     match *target {
         Expression::Name { ref id, .. } => {
             let local = Local::new();
+            let (ndx, offset) = util::lookup_value(&scope, id)?;
 
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-            outfile.write_all(format!("let mut {} = cannolib::lookup_value(\
-                &cannoli_scope_list, \"{}\");\n", local, id)
+            outfile.write_all(format!("let mut {} = cannoli_scope_list[{}]\
+                .borrow()[{}].clone();\n", local, ndx, offset)
                 .as_bytes()).unwrap();
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-            outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
-                .borrow_mut().insert(\"{}\".to_string(), {});\n", id,
-                output_operator(&local, op, &value_local)?)
-                .as_bytes()).unwrap();
+            outfile.write_all(format!("cannoli_scope_list[{}].borrow_mut()[{}] \
+                = {};\n", ndx, offset, output_operator(&local, op,
+                &value_local)?).as_bytes()).unwrap();
         },
         _ => panic!("illegal expression for augmented assignment")
     }
@@ -465,15 +496,15 @@ fn output_stmt_aug_assign(outfile: &mut File, class_scope: bool, indent: usize,
 }
 
 // TODO add support for for-else
-fn output_stmt_for(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt_for(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let (target, iter, body, _orelse) = match *stmt {
         Statement::For { ref target, ref iter, ref body, ref orelse } =>
             (target, iter, body, orelse),
         _ => unreachable!()
     };
     let iter_local = Local::new();
-    let seq_local = output_expr(outfile, indent, iter)?;
+    let seq_local = output_expr(outfile, scope.clone(), indent, iter)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("let mut {} = {}.clone_seq().into_iter();\n",
@@ -487,31 +518,32 @@ fn output_stmt_for(outfile: &mut File, indent: usize, stmt: &Statement)
         {}.next() {{ val }} else {{ break }};\n", next_local,
         iter_local).as_bytes()).unwrap();
 
-    unpack_values(outfile, indent + 1, None, &next_local, target)?;
-    output_stmts(outfile, false, indent + 1, body)?;
+    unpack_values(outfile, scope.clone(), indent + 1, None, &next_local,
+        target)?;
+    output_stmts(outfile, scope.clone(), false, indent + 1, body)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
     Ok(())
 }
 
-fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt_while(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let (test, body, orelse) = match *stmt {
         Statement::While { ref test, ref body, ref orelse } =>
             (test, body, orelse),
         _ => unreachable!()
     };
 
-    let condition = output_expr(outfile, indent, test)?;
+    let condition = output_expr(outfile, scope.clone(), indent, test)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("while ({}).to_bool() {{\n",
         condition).as_bytes()).unwrap();
 
-    output_stmts(outfile, false, indent + 1, body)?;
+    output_stmts(outfile, scope.clone(), false, indent + 1, body)?;
 
     // update the condition variable
-    let loop_cond = output_expr(outfile, indent + 1, test)?;
+    let loop_cond = output_expr(outfile, scope.clone(), indent + 1, test)?;
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
     outfile.write_all(format!("{} = {};\n", condition, loop_cond)
         .as_bytes()).unwrap();
@@ -521,12 +553,12 @@ fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
 
     if !orelse.is_empty() {
         // Negate the WHILE condition and add an if-statement
-        let condition = output_expr(outfile, indent, test)?;
+        let condition = output_expr(outfile, scope.clone(), indent, test)?;
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all(format!("if !({}).to_bool() {{\n",
             condition).as_bytes()).unwrap();
 
-        output_stmts(outfile, false, indent + 1, orelse)?;
+        output_stmts(outfile, scope.clone(), false, indent + 1, orelse)?;
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("}\n".as_bytes()).unwrap();
@@ -534,8 +566,8 @@ fn output_stmt_while(outfile: &mut File, indent: usize, stmt: &Statement)
     Ok(())
 }
 
-fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt_if(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let (test, body, orelse) = match *stmt {
         Statement::If { ref test, ref body, ref orelse } =>
             (test, body, orelse),
@@ -543,13 +575,13 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
     };
 
     // guard and decorators
-    let test_local = output_expr(outfile, indent, test)?;
+    let test_local = output_expr(outfile, scope.clone(), indent, test)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("if ({}).to_bool() {{\n", test_local)
         .as_bytes()).unwrap();
 
     // `then` body
-    output_stmts(outfile, false, indent + 1, body)?;
+    output_stmts(outfile, scope.clone(), false, indent + 1, body)?;
 
     // closing decorator
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -558,7 +590,7 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
     // check for elif/else
     if !orelse.is_empty() {
         outfile.write_all(" else {\n".as_bytes()).unwrap();
-        output_stmts(outfile, false, indent + 1, orelse)?;
+        output_stmts(outfile, scope.clone(), false, indent + 1, orelse)?;
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("}\n".as_bytes()).unwrap();
     } else {
@@ -568,8 +600,8 @@ fn output_stmt_if(outfile: &mut File, indent: usize, stmt: &Statement)
     Ok(())
 }
 
-fn output_stmt_import(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt_import(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let names = match *stmt {
         Statement::Import { ref names } => names,
         _ => unreachable!()
@@ -609,7 +641,8 @@ fn output_stmt_import(outfile: &mut File, indent: usize, stmt: &Statement)
 
 // TODO extend the from-import functionality to include the directory levels,
 // dot imports "from . import x", etc.
-fn output_stmt_import_from(outfile: &mut File, indent: usize, stmt: &Statement)
+fn output_stmt_import_from(outfile: &mut File,
+    scope: Vec<HashMap<String, usize>>, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (module, names, _level) = match *stmt {
         Statement::ImportFrom { ref module, ref names, ref level } =>
@@ -671,14 +704,14 @@ fn output_stmt_import_from(outfile: &mut File, indent: usize, stmt: &Statement)
     Ok(())
 }
 
-fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+fn output_stmt_expr(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let expr = match *stmt {
         Statement::Expr { ref value } => value,
         _ => unreachable!()
     };
 
-    output_expr(outfile, indent, expr)?;
+    output_expr(outfile, scope.clone(), indent, expr)?;
     Ok(())
 }
 
@@ -690,51 +723,63 @@ fn output_stmt_expr(outfile: &mut File, indent: usize, stmt: &Statement)
 /// * `outfile` - the file that is being written out to
 /// * `indent` - defines the indent level for definitions
 /// * `expr` - Expression subtree of the AST that is being output
-fn output_expr(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     match *expr {
-        Expression::BoolOp { .. } => output_expr_boolop(outfile, indent, expr),
-        Expression::BinOp { .. } => output_expr_binop(outfile, indent, expr),
+        Expression::BoolOp { .. } =>
+            output_expr_boolop(outfile, scope.clone(), indent, expr),
+        Expression::BinOp { .. } =>
+            output_expr_binop(outfile, scope.clone(), indent, expr),
         Expression::UnaryOp { .. } =>
-            output_expr_unaryop(outfile, indent, expr),
+            output_expr_unaryop(outfile, scope.clone(), indent, expr),
         Expression::Lambda { .. } => unimplemented!(),
-        Expression::If { .. } => output_expr_if(outfile, indent, expr),
+        Expression::If { .. } =>
+            output_expr_if(outfile, scope.clone(), indent, expr),
         Expression::Dict { .. } => unimplemented!(),
         Expression::Set { .. } => unimplemented!(),
         Expression::ListComp { .. } =>
-            output_expr_listcomp(outfile, indent, expr),
+            output_expr_listcomp(outfile, scope.clone(), indent, expr),
         Expression::SetComp { .. } => unimplemented!(),
         Expression::DictComp { .. } => unimplemented!(),
         Expression::Generator { .. } => unimplemented!(),
         Expression::None => unimplemented!(),
         Expression::Yield { .. } => unimplemented!(),
         Expression::YieldFrom { .. } => unimplemented!(),
-        Expression::Compare { .. } => output_expr_cmp(outfile, indent, expr),
-        Expression::Call { .. } => output_expr_call(outfile, indent, expr),
-        Expression::Num { ref n }  => output_expr_num(outfile, indent, n),
-        Expression::Str { ref s }  => output_expr_str(outfile, indent, s),
+        Expression::Compare { .. } =>
+            output_expr_cmp(outfile, scope.clone(), indent, expr),
+        Expression::Call { .. } =>
+            output_expr_call(outfile, scope.clone(), indent, expr),
+        Expression::Num { ref n }  =>
+            output_expr_num(outfile, scope.clone(), indent, n),
+        Expression::Str { ref s }  =>
+            output_expr_str(outfile, scope.clone(), indent, s),
         Expression::NameConstant { ref value } =>
-            output_expr_name_const(outfile, indent, value),
+            output_expr_name_const(outfile, scope.clone(), indent, value),
         Expression::Ellipsis => unimplemented!(),
-        Expression::Attribute { .. } => output_expr_attr(outfile, indent, expr),
+        Expression::Attribute { .. } =>
+            output_expr_attr(outfile, scope.clone(), indent, expr),
         Expression::Subscript { .. } =>
-            output_expr_subscript(outfile, indent, expr),
+            output_expr_subscript(outfile, scope.clone(), indent, expr),
         Expression::Starred { .. } => unimplemented!(),
-        Expression::Name { .. } => output_expr_name(outfile, indent, expr),
-        Expression::List { .. } => output_expr_list(outfile, indent, expr),
-        Expression::Tuple { .. } => output_expr_tuple(outfile, indent, expr)
+        Expression::Name { .. } =>
+            output_expr_name(outfile, scope.clone(), indent, expr),
+        Expression::List { .. } =>
+            output_expr_list(outfile, scope.clone(), indent, expr),
+        Expression::Tuple { .. } =>
+            output_expr_tuple(outfile, scope.clone(), indent, expr)
     }
 }
 
-fn output_expr_boolop(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_boolop(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let (op, values) = match *expr {
         Expression::BoolOp { ref op, ref values } => (op, values),
         _ => unreachable!()
     };
     let mut expr_iter = values.iter();
     let local = Local::new();
-    let expr_local = output_expr(outfile, indent, expr_iter.next().unwrap())?;
+    let expr_local = output_expr(outfile, scope.clone(), indent,
+        expr_iter.next().unwrap())?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     match *op {
@@ -744,7 +789,8 @@ fn output_expr_boolop(outfile: &mut File, indent: usize, expr: &Expression)
             if !{}.to_bool() {{\n", local, expr_local).as_bytes()).unwrap(),
     }
 
-    rec_output_bool_op(outfile, indent + 1, op, &expr_local, expr_iter)?;
+    rec_output_bool_op(outfile, scope.clone(), indent + 1, op, &expr_local,
+        expr_iter)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     match *op {
@@ -760,8 +806,9 @@ fn output_expr_boolop(outfile: &mut File, indent: usize, expr: &Expression)
 /// Recursively outputs if-expressions that mirror short-circuiting
 /// functionality, this has to be done due to how expressions are being written
 /// out. It's certainly not ideal but must be done.
-fn rec_output_bool_op(outfile: &mut File, indent: usize, op: &BoolOperator,
-    last: &Local, mut iter: Iter<Expression>) -> Result<(), CompilerError> {
+fn rec_output_bool_op(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, op: &BoolOperator, last: &Local, mut iter: Iter<Expression>)
+    -> Result<(), CompilerError> {
     let expr = match iter.next() {
         Some(expr) => expr,
         None => {
@@ -771,7 +818,7 @@ fn rec_output_bool_op(outfile: &mut File, indent: usize, op: &BoolOperator,
             return Ok(())
         }
     };
-    let expr_local = output_expr(outfile, indent, expr)?;
+    let expr_local = output_expr(outfile, scope.clone(), indent, expr)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     match *op {
@@ -781,7 +828,8 @@ fn rec_output_bool_op(outfile: &mut File, indent: usize, op: &BoolOperator,
             expr_local).as_bytes()).unwrap(),
     }
 
-    rec_output_bool_op(outfile, indent + 1, op, &expr_local, iter)?;
+    rec_output_bool_op(outfile, scope.clone(), indent + 1, op, &expr_local,
+        iter)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     match *op {
@@ -793,16 +841,16 @@ fn rec_output_bool_op(outfile: &mut File, indent: usize, op: &BoolOperator,
     Ok(())
 }
 
-fn output_expr_binop(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_binop(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (left, op, right) = match *expr {
         Expression::BinOp { ref left, ref op, ref right } => (left, op, right),
         _ => unreachable!()
     };
     let local = Local::new();
-    let left_local = output_expr(outfile, indent, left)?;
-    let right_local = output_expr(outfile, indent, right)?;
+    let left_local = output_expr(outfile, scope.clone(), indent, left)?;
+    let right_local = output_expr(outfile, scope.clone(), indent, right)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = {};\n", local,
@@ -812,15 +860,15 @@ fn output_expr_binop(outfile: &mut File, indent: usize, expr: &Expression)
     Ok(local)
 }
 
-fn output_expr_unaryop(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_unaryop(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (op, operand) = match *expr {
         Expression::UnaryOp { ref op, ref operand } => (op, operand),
         _ => unreachable!()
     };
     let local = Local::new();
-    let operand_local = output_expr(outfile, indent, operand)?;
+    let operand_local = output_expr(outfile, scope.clone(), indent, operand)?;
 
     output.push_str(&INDENT.repeat(indent));
     match *op {
@@ -843,8 +891,8 @@ fn output_expr_unaryop(outfile: &mut File, indent: usize, expr: &Expression)
     Ok(local)
 }
 
-fn output_expr_if(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_if(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (test, body, orelse) = match *expr {
         Expression::If { ref test, ref body, ref orelse } =>
@@ -852,9 +900,9 @@ fn output_expr_if(outfile: &mut File, indent: usize, expr: &Expression)
         _ => unreachable!()
     };
     let local = Local::new();
-    let test_local = output_expr(outfile, indent, test)?;
-    let body_local = output_expr(outfile, indent, body)?;
-    let orelse_local = output_expr(outfile, indent, orelse)?;
+    let test_local = output_expr(outfile, scope.clone(), indent, test)?;
+    let body_local = output_expr(outfile, scope.clone(), indent, body)?;
+    let orelse_local = output_expr(outfile, scope.clone(), indent, orelse)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = if ({}).to_bool() {{ {} }} \
@@ -864,8 +912,8 @@ fn output_expr_if(outfile: &mut File, indent: usize, expr: &Expression)
     Ok(local)
 }
 
-fn output_expr_listcomp(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_listcomp(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (elt, generators) = match *expr {
         Expression::ListComp { ref elt, ref generators } => (elt, generators),
@@ -885,7 +933,8 @@ fn output_expr_listcomp(outfile: &mut File, indent: usize, expr: &Expression)
         .as_bytes()).unwrap();
 
     let gen_iter = generators.iter().peekable();
-    output_nested_listcomp(outfile, indent, &list_local, elt, gen_iter)?;
+    output_nested_listcomp(outfile, scope.clone(), indent, &list_local, elt,
+        gen_iter)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = cannolib::Value::List(\
@@ -900,7 +949,8 @@ fn output_expr_listcomp(outfile: &mut File, indent: usize, expr: &Expression)
 
 // Tail recurse on nested fors in a list comprehension this was done to print
 // matching brackets in a much cleaner way
-fn output_nested_listcomp(outfile: &mut File, indent: usize, list_local: &Local,
+fn output_nested_listcomp(outfile: &mut File,
+    scope: Vec<HashMap<String, usize>>, indent: usize, list_local: &Local,
     elt: &Expression, mut gen_iter: Peekable<Iter<Comprehension>>)
     -> Result<(), CompilerError> {
     let comp = match gen_iter.next() {
@@ -912,7 +962,7 @@ fn output_nested_listcomp(outfile: &mut File, indent: usize, list_local: &Local,
             (target, iter, ifs)
     };
     let iter_local = Local::new();
-    let seq_local = output_expr(outfile, indent, iter)?;
+    let seq_local = output_expr(outfile, scope.clone(), indent, iter)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("let mut {} = {}.clone_seq()\
@@ -925,11 +975,12 @@ fn output_nested_listcomp(outfile: &mut File, indent: usize, list_local: &Local,
     outfile.write_all(format!("let mut {} = if let Some(val) = \
         {}.next() {{ val }} else {{ break }};\n", next_local,
         iter_local).as_bytes()).unwrap();
-    unpack_values(outfile, indent + 1, None, &next_local, target)?;
+    unpack_values(outfile, scope.clone(), indent + 1, None, &next_local,
+        target)?;
 
     let mut conds = vec![];
     for cond in ifs.iter() {
-        let cond_local = output_expr(outfile, indent + 1, cond)?;
+        let cond_local = output_expr(outfile, scope.clone(), indent + 1, cond)?;
         conds.push(cond_local);
     }
 
@@ -957,7 +1008,7 @@ fn output_nested_listcomp(outfile: &mut File, indent: usize, list_local: &Local,
     let cond_indent = if conds.is_empty() { indent + 1 } else { indent + 2 };
     // For the most nested element we want to append the 'elt'
     if let None = gen_iter.peek() {
-        let elt_local = output_expr(outfile, cond_indent, elt)?;
+        let elt_local = output_expr(outfile, scope.clone(), cond_indent, elt)?;
 
         outfile.write(INDENT.repeat(cond_indent).as_bytes()).unwrap();
         outfile.write(format!("{}.push({});\n", list_local, elt_local)
@@ -965,7 +1016,8 @@ fn output_nested_listcomp(outfile: &mut File, indent: usize, list_local: &Local,
     }
 
     // recurse before we output closing brackets
-    output_nested_listcomp(outfile, cond_indent, list_local, elt, gen_iter)?;
+    output_nested_listcomp(outfile, scope.clone(), cond_indent, list_local, elt,
+        gen_iter)?;
 
     if !conds.is_empty() {
         outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
@@ -977,8 +1029,8 @@ fn output_nested_listcomp(outfile: &mut File, indent: usize, list_local: &Local,
     Ok(())
 }
 
-fn output_expr_cmp(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_cmp(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (left, ops, comparators) = match *expr {
         Expression::Compare { ref left, ref ops, ref comparators } =>
@@ -986,7 +1038,7 @@ fn output_expr_cmp(outfile: &mut File, indent: usize, expr: &Expression)
         _ => unreachable!()
     };
     let local = Local::new();
-    let left_local = output_expr(outfile, indent, left)?;
+    let left_local = output_expr(outfile, scope.clone(), indent, left)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = cannolib::Value::Bool(({}", local,
@@ -996,12 +1048,14 @@ fn output_expr_cmp(outfile: &mut File, indent: usize, expr: &Expression)
     loop {
         match cmp_iter.next() {
             Some((op, comparator)) => {
-                let cmp_local = output_expr(outfile, indent, comparator)?;
+                let cmp_local = output_expr(outfile, scope.clone(), indent,
+                    comparator)?;
                 output.push_str(&format!("{})", output_cmp_operator(op,
                     &cmp_local)?));
 
                 if let Some(_) = cmp_iter.peek() {
-                    let cmp_local = output_expr(outfile, indent, comparator)?;
+                    let cmp_local = output_expr(outfile, scope.clone(), indent,
+                        comparator)?;
                     output.push_str(&format!(" && ({}", cmp_local));
                 }
             },
@@ -1014,8 +1068,8 @@ fn output_expr_cmp(outfile: &mut File, indent: usize, expr: &Expression)
     Ok(local)
 }
 
-fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_call(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (func, args, keywords) = match *expr {
         Expression::Call { ref func, ref args, ref keywords } =>
@@ -1030,7 +1084,7 @@ fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
         let (arg, value) = match *keyword {
             Keyword::Keyword { ref arg, ref value } => (arg.clone(), value)
         };
-        let kw_local = output_expr(outfile, indent, value)?;
+        let kw_local = output_expr(outfile, scope.clone(), indent, value)?;
 
         output.push_str(&INDENT.repeat(indent));
         output.push_str(&format!("kwargs.insert(\"{}\".to_string(), {});\n",
@@ -1040,12 +1094,13 @@ fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
     output.push_str(&INDENT.repeat(indent));
     match **func {
         Expression::Attribute { ref value, ref attr, .. } => {
-            let value_local = output_expr(outfile, indent, value)?;
+            let value_local = output_expr(outfile, scope.clone(), indent,
+                value)?;
             output.push_str(&format!("let mut {} = cannolib::call_member({}, \
                 \"{}\", vec![", local, value_local, attr));
         },
         _ => {
-            let func_local = output_expr(outfile, indent, func)?;
+            let func_local = output_expr(outfile, scope.clone(), indent, func)?;
             output.push_str(&format!("let mut {} = {}.call(vec![",
                 local, func_local));
         }
@@ -1055,7 +1110,8 @@ fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
     loop {
         match args_iter.next() {
             Some(expr) => {
-                let expr_local = output_expr(outfile, indent, expr)?;
+                let expr_local = output_expr(outfile, scope.clone(), indent,
+                    expr)?;
                 output.push_str(&format!("{}", expr_local));
 
                 if let Some(_) = args_iter.peek() {
@@ -1071,8 +1127,8 @@ fn output_expr_call(outfile: &mut File, indent: usize, expr: &Expression)
     Ok(local)
 }
 
-fn output_expr_num(outfile: &mut File, indent: usize, num: &Number)
-    -> Result<Local, CompilerError> {
+fn output_expr_num(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, num: &Number) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let out_str = match *num {
         Number::DecInteger(ref s) => {
@@ -1106,8 +1162,8 @@ fn output_expr_num(outfile: &mut File, indent: usize, num: &Number)
     Ok(local)
 }
 
-fn output_expr_str(outfile: &mut File, indent: usize, string: &String)
-    -> Result<Local, CompilerError> {
+fn output_expr_str(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, string: &String) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let out_str = format!("cannolib::Value::Str(\"{}\".to_string())", string);
     let local = Local::new();
@@ -1119,7 +1175,8 @@ fn output_expr_str(outfile: &mut File, indent: usize, string: &String)
     Ok(local)
 }
 
-fn output_expr_name_const(outfile: &mut File, indent: usize, value: &Singleton)
+fn output_expr_name_const(outfile: &mut File,
+    scope: Vec<HashMap<String, usize>>, indent: usize, value: &Singleton)
     -> Result<Local, CompilerError> {
     let mut output = String::new();
     let out_str = match *value {
@@ -1136,8 +1193,8 @@ fn output_expr_name_const(outfile: &mut File, indent: usize, value: &Singleton)
     Ok(local)
 }
 
-fn output_expr_attr(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_attr(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (value, attr, _ctx) = match *expr {
         Expression::Attribute { ref value, ref attr, ref ctx } =>
@@ -1145,7 +1202,7 @@ fn output_expr_attr(outfile: &mut File, indent: usize, expr: &Expression)
         _ => unreachable!()
     };
     let local = Local::new();
-    let value_local = output_expr(outfile, indent, value)?;
+    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = {}.get_attr(\"{}\");\n", local,
@@ -1155,8 +1212,8 @@ fn output_expr_attr(outfile: &mut File, indent: usize, expr: &Expression)
     Ok(local)
 }
 
-fn output_expr_subscript(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_subscript(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (value, slice, _ctx) = match *expr {
         Expression::Subscript { ref value, ref slice, ref ctx } =>
@@ -1164,27 +1221,30 @@ fn output_expr_subscript(outfile: &mut File, indent: usize, expr: &Expression)
         _ => unreachable!()
     };
     let local = Local::new();
-    let value_local = output_expr(outfile, indent, value)?;
+    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
 
     match **slice {
         Slice::Slice { ref lower, ref upper, ref step } => {
             let lower_arg = match *lower {
                 Some(ref expr) => {
-                    let expr_local = output_expr(outfile, indent, expr)?;
+                    let expr_local = output_expr(outfile, scope.clone(),
+                        indent, expr)?;
                     format!("Some({})", expr_local)
                 },
                 None => "None".to_string()
             };
             let upper_arg = match *upper {
                 Some(ref expr) => {
-                    let expr_local = output_expr(outfile, indent, expr)?;
+                    let expr_local = output_expr(outfile, scope.clone(),
+                        indent, expr)?;
                     format!("Some({})", expr_local)
                 },
                 None => "None".to_string()
             };
             let step_arg = match *step {
                 Some(ref expr) => {
-                    let expr_local = output_expr(outfile, indent, expr)?;
+                    let expr_local = output_expr(outfile, scope.clone(),
+                        indent, expr)?;
                     format!("Some({})", expr_local)
                 },
                 None => "None".to_string()
@@ -1196,7 +1256,8 @@ fn output_expr_subscript(outfile: &mut File, indent: usize, expr: &Expression)
         },
         Slice::ExtSlice { .. } => unimplemented!(),
         Slice::Index { ref value } => {
-            let index_local = output_expr(outfile, indent, value)?;
+            let index_local = output_expr(outfile, scope.clone(),
+                indent, value)?;
 
             output.push_str(&INDENT.repeat(indent));
             output.push_str(&format!("let mut {} = {}.index({});\n", local,
@@ -1208,25 +1269,26 @@ fn output_expr_subscript(outfile: &mut File, indent: usize, expr: &Expression)
     Ok(local)
 }
 
-fn output_expr_name(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_name(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (id, _ctx) = match *expr {
         Expression::Name { ref id, ref ctx } => (id, ctx),
         _ => unreachable!()
     };
     let local = Local::new();
+    let (ndx, offset) = util::lookup_value(&scope, id)?;
 
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let mut {} = cannolib::lookup_value(\
-        &cannoli_scope_list, \"{}\");\n", local, id));
+    output.push_str(&format!("let mut {} = cannoli_scope_list[{}].borrow()[{}]\
+        .clone();\n", local, ndx, offset));
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
 }
 
-fn output_expr_list(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_list(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (elts, _ctx) = match *expr {
         Expression::List { ref elts, ref ctx } => (elts, ctx),
@@ -1238,7 +1300,7 @@ fn output_expr_list(outfile: &mut File, indent: usize, expr: &Expression)
     output.push_str(&format!("let mut cannoli_list_builder = Vec::new();\n"));
 
     for elt in elts.iter() {
-        let elt_local = output_expr(outfile, indent, elt)?;
+        let elt_local = output_expr(outfile, scope.clone(), indent, elt)?;
 
         output.push_str(&INDENT.repeat(indent));
         output.push_str(&format!("cannoli_list_builder.push({});\n",
@@ -1254,8 +1316,8 @@ fn output_expr_list(outfile: &mut File, indent: usize, expr: &Expression)
     Ok(local)
 }
 
-fn output_expr_tuple(outfile: &mut File, indent: usize, expr: &Expression)
-    -> Result<Local, CompilerError> {
+fn output_expr_tuple(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (elts, _ctx) = match *expr {
         Expression::Tuple { ref elts, ref ctx } => (elts, ctx),
@@ -1267,7 +1329,7 @@ fn output_expr_tuple(outfile: &mut File, indent: usize, expr: &Expression)
     output.push_str(&format!("let mut cannoli_tuple_builder = Vec::new();\n"));
 
     for elt in elts.iter() {
-        let elt_local = output_expr(outfile, indent, elt)?;
+        let elt_local = output_expr(outfile, scope.clone(), indent, elt)?;
 
         output.push_str(&INDENT.repeat(indent));
         output.push_str(&format!("cannoli_tuple_builder.push({});\n",
@@ -1282,8 +1344,8 @@ fn output_expr_tuple(outfile: &mut File, indent: usize, expr: &Expression)
     Ok(local)
 }
 
-fn output_parameters(outfile: &mut File, indent: usize, params: &Arguments)
-    -> Result<(), CompilerError> {
+fn output_parameters(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, params: &Arguments) -> Result<(), CompilerError> {
     let (args, _vararg, _kwonlyargs, _kw_defaults, _kwarg, _defaults) =
     match *params {
         Arguments::Arguments { ref args, ref vararg, ref kwonlyargs,
@@ -1351,22 +1413,33 @@ fn output_cmp_operator(op: &CmpOperator, val: &Local)
 }
 
 // TODO add list support when needed, should be just like Tuples
-/// Tail-recursive function that recursively unpacks values.
-fn unpack_values(outfile: &mut File, indent: usize, scope: Option<&str>,
-    packed_values: &Local, target: &Expression) -> Result<(), CompilerError> {
-    // Default is cannoli_scope_list
-    let scope = match scope {
-        Some(s) => s,
-        None => "cannoli_scope_list.last_mut().unwrap().borrow_mut()"
-    };
+/// Tail-recursive function that recursively unpacks values. Passing 'None' for
+/// scope_type will default to looking up the value in the current scope,
+/// typically this value is used when dealing with classes.
+fn unpack_values(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+    indent: usize, scope_type: Option<&str>, packed_values: &Local,
+    target: &Expression) -> Result<(), CompilerError> {
     match *target {
         Expression::Name { ref id, .. } => {
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-            outfile.write_all(format!("{}.insert(\"{}\".to_string(), {});\n",
-                scope, id, packed_values).as_bytes()).unwrap();
+
+            match scope_type {
+                Some(s) => {
+                    outfile.write_all(format!("{}.insert(\"{}\".to_string(), \
+                        {});\n", s, id, packed_values).as_bytes())
+                        .unwrap();
+                },
+                None => {
+                    let (ndx, offset) = util::lookup_value(&scope, id)?;
+                    outfile.write_all(format!("cannoli_scope_list[{}].borrow\
+                        _mut()[{}] = {};\n", ndx, offset, packed_values)
+                        .as_bytes()).unwrap();
+                }
+            }
         },
         Expression::Attribute { ref value, ref attr, .. } => {
-            let base_local = output_expr(outfile, indent, value)?;
+            let base_local = output_expr(outfile, scope.clone(),
+                indent, value)?;
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
             outfile.write_all(format!("cannolib::attr_assign({}, \"{}\", {}\
                 );\n", base_local, attr, packed_values).as_bytes()).unwrap();
@@ -1380,12 +1453,27 @@ fn unpack_values(outfile: &mut File, indent: usize, scope: Option<&str>,
                     Expression::Name { ref id, .. } => {
                         outfile.write(INDENT.repeat(indent).as_bytes())
                             .unwrap();
-                        outfile.write_all(format!("{}.insert(\"{}\"\
-                            .to_string(), {}.index(cannolib::Value::Number(\
-                            cannolib::NumericType::Integer({}))));\n", scope,
-                            id, packed_values, ndx).as_bytes()).unwrap();
+
+                        match scope_type {
+                            Some(s) => {
+                                outfile.write_all(format!("{}.insert(\"{}\"\
+                                    .to_string(), {}.index(cannolib::Value::\
+                                    Number(cannolib::NumericType::Integer({})\
+                                    )));\n", s, id, packed_values, ndx)
+                                    .as_bytes()).unwrap();
+                            },
+                            None => {
+                                let (index, offset) =
+                                    util::lookup_value(&scope, id)?;
+                                outfile.write_all(format!("cannoli_scope_list[\
+                                    {}].borrow_mut()[{}] = {}.index(cannolib::\
+                                    Value::Number(cannolib::NumericType::\
+                                    Integer({})));\n", index, offset,
+                                    packed_values, ndx).as_bytes()).unwrap();
+                            }
+                        }
                     },
-                    Expression::Tuple { .. } => {
+                    Expression::List { .. } | Expression::Tuple { .. }=> {
                         let local = Local::new();
 
                         outfile.write(INDENT.repeat(indent).as_bytes())
@@ -1394,8 +1482,8 @@ fn unpack_values(outfile: &mut File, indent: usize, scope: Option<&str>,
                             cannolib::Value::Number(cannolib::NumericType::\
                             Integer({})));\n", local, packed_values, ndx)
                             .as_bytes()).unwrap();
-                        unpack_values(outfile, indent, Some(scope), &local,
-                            elt)?;
+                        unpack_values(outfile, scope.clone(), indent,
+                            scope_type, &local, elt)?;
                     },
                     _ => unimplemented!()
                 }

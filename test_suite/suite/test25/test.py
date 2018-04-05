@@ -3,13 +3,13 @@
 #   def func():
 #      print("hi")
 #
-#def some_func(jon):
-#   print(jon)
-#
-#a = some_func
-#
-#a("hello")
-#a(4)
+def some_func(jon):
+   print(jon)
+
+a = some_func
+
+a("hello")
+a(4)
 #
 #b = SomeClass()
 #print(b.a)
@@ -48,3 +48,6 @@ a = 3
 b = "hello"
 
 print(a, b)
+
+a += 4
+print(a)
