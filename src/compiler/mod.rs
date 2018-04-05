@@ -423,10 +423,11 @@ fn output_stmt_classdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
         name).as_bytes()).unwrap();
 
     // Add the new class definition to the current scope table
+    let (ndx, offset) = util::lookup_value(&scope, name)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write_all(format!("cannoli_scope_list.last_mut().unwrap()\
-        .borrow_mut().insert(\"{}\".to_string(), cannolib::Value::Class {{ \
-        tbl: cannoli_object_tbl }});\n", name).as_bytes()).unwrap();
+    outfile.write_all(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
+        cannolib::Value::Class {{ tbl: cannoli_object_tbl }};\n", ndx, offset)
+        .as_bytes()).unwrap();
 
     Ok(())
 }
@@ -487,7 +488,7 @@ fn output_stmt_assign(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
 
 // TODO ignores class_scope for now, I don't know if it even works in Python.
 fn output_stmt_aug_assign(outfile: &mut File,
-    scope: Vec<HashMap<String, usize>>, class_scope: bool, indent: usize,
+    scope: Vec<HashMap<String, usize>>, _class_scope: bool, indent: usize,
     stmt: &Statement) -> Result<(), CompilerError> {
     let (target, op, value) = match *stmt {
         Statement::AugAssign { ref target, ref op, ref value } =>
@@ -635,12 +636,13 @@ fn output_stmt_import(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
             Some(ref alias) => alias,
             None => name
         };
+        let (ndx, offset) = util::lookup_value(&scope, alias)?;
 
         if BUILTIN_MODS.contains(&name[..]) {
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-            outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
-                .borrow_mut().insert(\"{}\".to_string(), cannolib::builtin::{}\
-                ::import_module());\n", alias, name).as_bytes()).unwrap();
+            outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
+                cannolib::builtin::{}::import_module();\n", ndx, offset, name)
+                .as_bytes()).unwrap();
             return Ok(())
         }
 
@@ -650,9 +652,8 @@ fn output_stmt_import(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
         outfile.write(format!("use cannoli_mods::{};\n", name)
             .as_bytes()).unwrap();
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-        outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
-            .borrow_mut().insert(\"{}\".to_string(), {}::import_module());\n",
-            alias, name).as_bytes()).unwrap();
+        outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
+            {}::import_module();\n", ndx, offset, name).as_bytes()).unwrap();
     }
 
     outfile.flush().unwrap();
@@ -661,8 +662,10 @@ fn output_stmt_import(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
 
 // TODO extend the from-import functionality to include the directory levels,
 // dot imports "from . import x", etc.
+// TODO support vector scope optimization, we need to figure out a way to
+// handle wildcards.
 fn output_stmt_import_from(outfile: &mut File,
-    scope: Vec<HashMap<String, usize>>, indent: usize, stmt: &Statement)
+    _scope: Vec<HashMap<String, usize>>, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (module, names, _level) = match *stmt {
         Statement::ImportFrom { ref module, ref names, ref level } =>
@@ -932,8 +935,9 @@ fn output_expr_if(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     Ok(local)
 }
 
-fn output_expr_listcomp(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
-    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
+fn output_expr_listcomp(outfile: &mut File,
+    mut scope: Vec<HashMap<String, usize>>, indent: usize, expr: &Expression)
+    -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (elt, generators) = match *expr {
         Expression::ListComp { ref elt, ref generators } => (elt, generators),
@@ -941,13 +945,24 @@ fn output_expr_listcomp(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     };
     let local = Local::new();
     let list_local = Local::new();
+    let current_scope = util::gather_comp_targets(generators, 0)?;
+    let capacity = current_scope.len();
+
+    scope.push(current_scope);
 
     // Isolate the list comprehension inorder to ensure targets don't get
     // mapped to the current scope list, then start building output list
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write_all("cannoli_scope_list.push(std::rc::Rc::new(\
-        std::cell::RefCell::new(std::collections::HashMap::new())));\n"
+    outfile.write_all(format!("let mut scope_list_setup: Vec<cannolib::Value> \
+        = Vec::with_capacity({});\n", capacity).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all(format!("scope_list_setup.resize({}, \
+        cannolib::Value::Undefined);\n", capacity).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all("cannoli_scope_list.push(\
+        std::rc::Rc::new(std::cell::RefCell::new(scope_list_setup)));\n"
         .as_bytes()).unwrap();
+
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(&format!("let mut {} = vec![];\n", list_local)
         .as_bytes()).unwrap();
@@ -1147,7 +1162,7 @@ fn output_expr_call(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     Ok(local)
 }
 
-fn output_expr_num(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+fn output_expr_num(outfile: &mut File, _scope: Vec<HashMap<String, usize>>,
     indent: usize, num: &Number) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let out_str = match *num {
@@ -1182,7 +1197,7 @@ fn output_expr_num(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     Ok(local)
 }
 
-fn output_expr_str(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
+fn output_expr_str(outfile: &mut File, _scope: Vec<HashMap<String, usize>>,
     indent: usize, string: &String) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let out_str = format!("cannolib::Value::Str(\"{}\".to_string())", string);
@@ -1196,7 +1211,7 @@ fn output_expr_str(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
 }
 
 fn output_expr_name_const(outfile: &mut File,
-    scope: Vec<HashMap<String, usize>>, indent: usize, value: &Singleton)
+    _scope: Vec<HashMap<String, usize>>, indent: usize, value: &Singleton)
     -> Result<Local, CompilerError> {
     let mut output = String::new();
     let out_str = match *value {

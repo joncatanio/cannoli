@@ -127,6 +127,26 @@ pub fn gather_func_params(params: &Arguments, start_ndx: usize)
     Ok(scope_map)
 }
 
+pub fn gather_comp_targets(generators: &Vec<Comprehension>, start_ndx: usize)
+    -> Result<HashMap<String, usize>, CompilerError> {
+    let mut scope_set = HashSet::new();
+    let mut scope_map = HashMap::new();
+
+    let mut gen_iter = generators.iter();
+    while let Some(&Comprehension::Comprehension { ref target, .. })
+        = gen_iter.next() {
+        unpack_assign_targets(&mut scope_set, target)?;
+    }
+
+    let end_ndx = start_ndx + scope_set.len();
+    (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
+        .for_each(|(ndx, key)| {
+            scope_map.insert(key, ndx);
+        });
+
+    Ok(scope_map)
+}
+
 fn unpack_assign_targets(scope: &mut HashSet<String>, target: &Expression)
     -> Result<(), CompilerError> {
     match *target {

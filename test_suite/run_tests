@@ -6,10 +6,19 @@ RUST_CRATE=sandbox
 PYTHON=python3
 
 run_test() {
+   f=$1
+
+   # if the test.skip file exists then we won't run the test
+   if [[ -e "$f"/test.skip ]]; then
+      printf "\n\033[33;93m"
+      echo "'$f' contains 'test.skip' and will be skipped..."
+      printf "\033[0m"
+      return
+   fi
+
    # remove all out files first
    rm $TEST_DIR/test*/*.out
 
-   f=$1
    printf "\n\033[33;93m"
    echo "Testing: '$f'"
    printf "\033[0m"
@@ -22,6 +31,14 @@ run_test() {
    $PYTHON "$f"/test.py > "$f"/expected.out
 
    ./$EXECUTABLE "$f"/test.py > /dev/null
+   STATUS=$?
+   if [[ $STATUS -ne 0 ]]; then
+      printf "\033[33;31m"
+      printf "[COMPILER ERROR]\n"
+      printf "\033[0m"
+      return
+   fi
+
    mv "$f"/main.rs "$f"/cannoli_mods.rs $RUST_CRATE/src/
    cd $RUST_CRATE
    cargo build --release 2>/dev/null
@@ -30,7 +47,7 @@ run_test() {
       printf "\033[33;31m"
       printf "$f build failed\n\n"
       printf "\033[0m"
-      continue
+      return
    fi
    cd ..
 
