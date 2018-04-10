@@ -302,7 +302,8 @@ fn output_stmt(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
             class_scope, indent, stmt),
         Statement::AugAssign { .. } => output_stmt_aug_assign(outfile,
             scope.clone(), class_scope, indent, stmt),
-        Statement::AnnAssign { .. } => unimplemented!(),
+        Statement::AnnAssign { .. } => output_stmt_ann_assign(outfile,
+            scope.clone(), class_scope, indent, stmt),
         Statement::For { .. } =>
             output_stmt_for(outfile, scope.clone(), indent, stmt),
         Statement::While { .. } =>
@@ -514,6 +515,17 @@ fn output_stmt_aug_assign(outfile: &mut File,
         _ => panic!("illegal expression for augmented assignment")
     }
     Ok(())
+}
+
+fn output_stmt_ann_assign(outfile: &mut File,
+    scope: Vec<HashMap<String, usize>>, _class_scope: bool, indent: usize,
+    stmt: &Statement) -> Result<(), CompilerError> {
+    let (target, annotation, value) = match *stmt {
+        Statement::AnnAssign { ref target, ref annotation, ref value } =>
+            (target, annotation, value),
+        _ => unreachable!()
+    };
+    unimplemented!()
 }
 
 // TODO add support for for-else
