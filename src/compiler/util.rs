@@ -28,12 +28,12 @@ pub fn get_file_prefix(file: &str) -> Result<(String, String), CompilerError> {
 // Scope gathering helper functions
 /// This function gathers id's that will be instantiated in the current scope
 /// and orders them for the compiler to use when looking up or assigning values
-pub fn gather_scope(stmts: &Vec<Statement>, start_ndx: usize)
+pub fn gather_scope(stmts: &Vec<Statement>, start_ndx: usize, is_class: bool)
     -> Result<HashMap<String, usize>, CompilerError> {
     let mut scope_set = HashSet::new();
     let mut scope_map = HashMap::new();
 
-    rec_gather_scope(&mut scope_set, stmts)?;
+    rec_gather_scope(&mut scope_set, stmts, is_class)?;
 
     let end_ndx = start_ndx + scope_set.len();
     (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
@@ -45,12 +45,16 @@ pub fn gather_scope(stmts: &Vec<Statement>, start_ndx: usize)
 }
 
 /// Recursively identifies statements that will modify a single level of scope
-fn rec_gather_scope(scope: &mut HashSet<String>, stmts: &Vec<Statement>)
-    -> Result<(), CompilerError> {
+fn rec_gather_scope(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
+    is_class: bool) -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
         match *stmt {
             Statement::FunctionDef { ref name, .. } => {
                 scope.insert(name.clone());
+
+                if is_class && name == "__init__" {
+                    gather_class_init(scope, stmt)?;
+                }
             },
             Statement::ClassDef { ref name, .. } => {
                 scope.insert(name.clone());
@@ -62,16 +66,16 @@ fn rec_gather_scope(scope: &mut HashSet<String>, stmts: &Vec<Statement>)
             },
             Statement::For { ref target, iter: _, ref body, ref orelse } => {
                 unpack_assign_targets(scope, target)?;
-                rec_gather_scope(scope, body)?;
-                rec_gather_scope(scope, orelse)?;
+                rec_gather_scope(scope, body, is_class)?;
+                rec_gather_scope(scope, orelse, is_class)?;
             },
             Statement::While { test: _, ref body, ref orelse } => {
-                rec_gather_scope(scope, body)?;
-                rec_gather_scope(scope, orelse)?;
+                rec_gather_scope(scope, body, is_class)?;
+                rec_gather_scope(scope, orelse, is_class)?;
             },
             Statement::If { test: _, ref body, ref orelse } => {
-                rec_gather_scope(scope, body)?;
-                rec_gather_scope(scope, orelse)?;
+                rec_gather_scope(scope, body, is_class)?;
+                rec_gather_scope(scope, orelse, is_class)?;
             },
             Statement::Import { ref names } => {
                 for name in names.iter() {
@@ -147,6 +151,64 @@ pub fn gather_comp_targets(generators: &Vec<Comprehension>, start_ndx: usize)
     Ok(scope_map)
 }
 
+/// Should only be called on __init__ functions to gather the proper class
+/// initialization identifiers.
+fn gather_class_init(scope: &mut HashSet<String>, func: &Statement)
+    -> Result<(), CompilerError> {
+    let (args, body) = match *func {
+        Statement::FunctionDef { ref name, ref args, ref body, .. } => {
+            if name != "__init__" {
+                panic!("'gather_class_init' may only be called on '__init__'")
+            }
+
+            match *args {
+                Arguments::Arguments { ref args, .. } => (args, body)
+            }
+        },
+        _ => unreachable!()
+    };
+    let self_alias = if args.len() > 0 {
+        match args[0] {
+            Arg::Arg { ref arg, .. } => arg
+        }
+    } else {
+        // return since they might be using __init__ in an irregular way
+        return Ok(())
+    };
+
+    rec_gather_class_init(scope, body, self_alias)?;
+
+    Ok(())
+}
+
+fn rec_gather_class_init(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
+    self_alias: &str) -> Result<(), CompilerError> {
+    for stmt in stmts.iter() {
+        match *stmt {
+            Statement::Assign { ref targets, .. } => {
+                for target in targets.iter() {
+                    unpack_assign_alias(scope, target, self_alias)?;
+                }
+            },
+            Statement::For { ref target, iter: _, ref body, ref orelse } => {
+                rec_gather_class_init(scope, body, self_alias)?;
+                rec_gather_class_init(scope, orelse, self_alias)?;
+            },
+            Statement::While { test: _, ref body, ref orelse } => {
+                rec_gather_class_init(scope, body, self_alias)?;
+                rec_gather_class_init(scope, orelse, self_alias)?;
+            },
+            Statement::If { test: _, ref body, ref orelse } => {
+                rec_gather_class_init(scope, body, self_alias)?;
+                rec_gather_class_init(scope, orelse, self_alias)?;
+            },
+            _ => ()
+        }
+    }
+
+    Ok(())
+}
+
 fn unpack_assign_targets(scope: &mut HashSet<String>, target: &Expression)
     -> Result<(), CompilerError> {
     match *target {
@@ -156,15 +218,35 @@ fn unpack_assign_targets(scope: &mut HashSet<String>, target: &Expression)
         Expression::List { .. } => unimplemented!(),
         Expression::Tuple { ref elts, .. } => {
             for elt in elts.iter() {
-                match *elt {
-                    Expression::Name { ref id, .. } => {
-                        scope.insert(id.clone());
-                    },
-                    Expression::Tuple { .. } => {
-                        unpack_assign_targets(scope, elt)?;
-                    },
-                    _ => unimplemented!()
-                }
+                unpack_assign_targets(scope, elt)?;
+            }
+        },
+        _ => ()
+    }
+
+    Ok(())
+}
+
+/// This function adds all assignment attributes for a given alias. The
+/// main example of this would be collecing 'self.*' assignments in the
+/// __init__() method for a class definition
+fn unpack_assign_alias(scope: &mut HashSet<String>, target: &Expression,
+    alias: &str) -> Result<(), CompilerError> {
+    match *target {
+        Expression::Attribute { ref value, ref attr, .. } => {
+            let name = match **value {
+                Expression::Name { ref id, .. } => id,
+                _ => return Ok(())
+            };
+
+            if name == alias {
+                scope.insert(attr.clone());
+            }
+        },
+        Expression::List { .. } => unimplemented!(),
+        Expression::Tuple { ref elts, .. } => {
+            for elt in elts.iter() {
+                unpack_assign_alias(scope, elt, alias)?;
             }
         },
         _ => ()

@@ -172,7 +172,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     // Gather the current scope elements and create the scope Vec that will be
     // used in this compiler to output a more efficient scoping system.
     let mut scope = vec![cannolib::builtin::get_mapping()];
-    let mut current_scope = util::gather_scope(body, 0)?;
+    let mut current_scope = util::gather_scope(body, 0, false)?;
 
     // Insert meta data into the scope on the compiler side, this is also
     // setup below to be used at runtime. Then appened the updated scope.
@@ -339,7 +339,7 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: Vec<HashMap<String,
     };
     let local = Local::new();
     let param_map = util::gather_func_params(args, 0)?;
-    let mut current_scope = util::gather_scope(body, param_map.len())?;
+    let mut current_scope = util::gather_scope(body, param_map.len(), false)?;
 
     current_scope.extend(param_map);
     scope.push(current_scope);
@@ -410,6 +410,8 @@ fn output_stmt_classdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
             decorator_list),
         _ => unreachable!()
     };
+
+    println!("CLASS SCOPE: {:?}", util::gather_scope(body, 0, true)?);
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write("let mut cannoli_object_tbl = \
@@ -1497,31 +1499,10 @@ fn unpack_values(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
         Expression::Tuple { ref elts, .. } => {
             for (ndx, elt) in elts.iter().enumerate() {
                 match *elt {
-                    Expression::Name { ref id, .. } => {
-                        outfile.write(INDENT.repeat(indent).as_bytes())
-                            .unwrap();
-
-                        match scope_type {
-                            Some(s) => {
-                                outfile.write_all(format!("{}.insert(\"{}\"\
-                                    .to_string(), {}.index(cannolib::Value::\
-                                    Number(cannolib::NumericType::Integer({})\
-                                    )));\n", s, id, packed_values, ndx)
-                                    .as_bytes()).unwrap();
-                            },
-                            None => {
-                                let (index, offset) =
-                                    util::lookup_value(&scope, id)?;
-                                outfile.write_all(format!("cannoli_scope_list[\
-                                    {}].borrow_mut()[{}] = {}.index(cannolib::\
-                                    Value::Number(cannolib::NumericType::\
-                                    Integer({}))); // id: '{}'\n", index,
-                                    offset, packed_values, ndx, id)
-                                    .as_bytes()).unwrap();
-                            }
-                        }
-                    },
-                    Expression::List { .. } | Expression::Tuple { .. }=> {
+                    Expression::Name { .. }
+                    | Expression::Attribute { .. }
+                    | Expression::List { .. }
+                    | Expression::Tuple { .. } => {
                         let local = Local::new();
 
                         outfile.write(INDENT.repeat(indent).as_bytes())
