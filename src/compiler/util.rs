@@ -1,5 +1,5 @@
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use ::parser::ast::*;
 use super::errors::CompilerError;
@@ -127,34 +127,34 @@ pub fn get_file_prefix(file: &str) -> Result<(String, String), CompilerError> {
 /// and orders them for the compiler to use when looking up or assigning values
 pub fn gather_scope(stmts: &Vec<Statement>, start_ndx: usize, is_class: bool)
     -> Result<HashMap<String, (usize, Option<String>)>, CompilerError> {
-    let mut scope_set = HashSet::new();
     let mut scope_map = HashMap::new();
+    let mut map = HashMap::new();
 
-    rec_gather_scope(&mut scope_set, stmts, is_class)?;
+    rec_gather_scope(&mut scope_map, stmts, is_class)?;
 
-    let end_ndx = start_ndx + scope_set.len();
-    (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
+    let end_ndx = start_ndx + scope_map.len();
+    (start_ndx..end_ndx).into_iter().zip(scope_map.into_iter())
         .for_each(|(ndx, key)| {
-            scope_map.insert(key, (ndx, None));
+            map.insert(key.0, (ndx, key.1));
         });
 
-    Ok(scope_map)
+    Ok(map)
 }
 
 /// Recursively identifies statements that will modify a single level of scope
-fn rec_gather_scope(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
-    is_class: bool) -> Result<(), CompilerError> {
+fn rec_gather_scope(scope: &mut HashMap<String, Option<String>>,
+    stmts: &Vec<Statement>, is_class: bool) -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
         match *stmt {
             Statement::FunctionDef { ref name, .. } => {
-                scope.insert(name.clone());
+                scope.insert(name.clone(), None);
 
                 if is_class && name == "__init__" {
                     gather_class_init(scope, stmt)?;
                 }
             },
             Statement::ClassDef { ref name, .. } => {
-                scope.insert(name.clone());
+                scope.insert(name.clone(), Some(name.to_string()));
             },
             Statement::Assign { ref targets, .. } => {
                 for target in targets.iter() {
@@ -187,7 +187,7 @@ fn rec_gather_scope(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
                         None => name
                     };
 
-                    scope.insert(alias.clone());
+                    scope.insert(alias.clone(), None);
                 }
             },
             Statement::ImportFrom { .. } => {
@@ -205,8 +205,8 @@ fn rec_gather_scope(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
 
 pub fn gather_func_params(params: &Arguments, start_ndx: usize)
     -> Result<HashMap<String, (usize, Option<String>)>, CompilerError> {
-    let mut scope_set = HashSet::new();
     let mut scope_map = HashMap::new();
+    let mut map = HashMap::new();
     let (args, _vararg, _kwonlyargs, _kw_defaults, _kwarg, _defaults) =
     match *params {
         Arguments::Arguments { ref args, ref vararg, ref kwonlyargs,
@@ -219,42 +219,43 @@ pub fn gather_func_params(params: &Arguments, start_ndx: usize)
             Arg::Arg { ref arg, .. } => arg
         };
 
-        scope_set.insert(arg_name.to_string());
+        // TODO update this to insert the annotation
+        scope_map.insert(arg_name.to_string(), None);
     }
 
-    let end_ndx = start_ndx + scope_set.len();
-    (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
+    let end_ndx = start_ndx + scope_map.len();
+    (start_ndx..end_ndx).into_iter().zip(scope_map.into_iter())
         .for_each(|(ndx, key)| {
-            scope_map.insert(key, (ndx, None));
+            map.insert(key.0, (ndx, key.1));
         });
 
-    Ok(scope_map)
+    Ok(map)
 }
 
 pub fn gather_comp_targets(generators: &Vec<Comprehension>, start_ndx: usize)
     -> Result<HashMap<String, (usize, Option<String>)>, CompilerError> {
-    let mut scope_set = HashSet::new();
     let mut scope_map = HashMap::new();
+    let mut map = HashMap::new();
 
     let mut gen_iter = generators.iter();
     while let Some(&Comprehension::Comprehension { ref target, .. })
         = gen_iter.next() {
-        unpack_assign_targets(&mut scope_set, target)?;
+        unpack_assign_targets(&mut scope_map, target)?;
     }
 
-    let end_ndx = start_ndx + scope_set.len();
-    (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
+    let end_ndx = start_ndx + scope_map.len();
+    (start_ndx..end_ndx).into_iter().zip(scope_map.into_iter())
         .for_each(|(ndx, key)| {
-            scope_map.insert(key, (ndx, None));
+            map.insert(key.0, (ndx, key.1));
         });
 
-    Ok(scope_map)
+    Ok(map)
 }
 
 /// Should only be called on __init__ functions to gather the proper class
 /// initialization identifiers.
-fn gather_class_init(scope: &mut HashSet<String>, func: &Statement)
-    -> Result<(), CompilerError> {
+fn gather_class_init(scope: &mut HashMap<String, Option<String>>,
+    func: &Statement) -> Result<(), CompilerError> {
     let (args, body) = match *func {
         Statement::FunctionDef { ref name, ref args, ref body, .. } => {
             if name != "__init__" {
@@ -281,8 +282,8 @@ fn gather_class_init(scope: &mut HashSet<String>, func: &Statement)
     Ok(())
 }
 
-fn rec_gather_class_init(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
-    self_alias: &str) -> Result<(), CompilerError> {
+fn rec_gather_class_init(scope: &mut HashMap<String, Option<String>>,
+    stmts: &Vec<Statement>, self_alias: &str) -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
         match *stmt {
             Statement::Assign { ref targets, .. } => {
@@ -312,11 +313,11 @@ fn rec_gather_class_init(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
     Ok(())
 }
 
-fn unpack_assign_targets(scope: &mut HashSet<String>, target: &Expression)
-    -> Result<(), CompilerError> {
+fn unpack_assign_targets(scope: &mut HashMap<String, Option<String>>,
+    target: &Expression) -> Result<(), CompilerError> {
     match *target {
         Expression::Name { ref id, .. } => {
-            scope.insert(id.clone());
+            scope.insert(id.clone(), None);
         },
         Expression::List { .. } => unimplemented!(),
         Expression::Tuple { ref elts, .. } => {
@@ -333,8 +334,8 @@ fn unpack_assign_targets(scope: &mut HashSet<String>, target: &Expression)
 /// This function adds all assignment attributes for a given alias. The
 /// main example of this would be collecing 'self.*' assignments in the
 /// __init__() method for a class definition
-fn unpack_assign_alias(scope: &mut HashSet<String>, target: &Expression,
-    alias: &str) -> Result<(), CompilerError> {
+fn unpack_assign_alias(scope: &mut HashMap<String, Option<String>>,
+    target: &Expression, alias: &str) -> Result<(), CompilerError> {
     match *target {
         Expression::Attribute { ref value, ref attr, .. } => {
             let name = match **value {
@@ -343,7 +344,7 @@ fn unpack_assign_alias(scope: &mut HashSet<String>, target: &Expression,
             };
 
             if name == alias {
-                scope.insert(attr.clone());
+                scope.insert(attr.clone(), None);
             }
         },
         Expression::List { .. } => unimplemented!(),
