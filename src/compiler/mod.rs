@@ -216,11 +216,17 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
         cannolib::Value::Str(\"__main__\".to_string());\n", ndx, offset)
         .as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), None, 2, body)?;
+    println!("SCOPE: {:?}", scope);
+    output_stmts(outfile, &mut scope, None, 2, body)?;
+    println!("SCOPE: {:?}", scope);
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
+
+    // Pop the main scope and the built-ins, this is to just stay consistent
+    scope.pop_scope();
+    scope.pop_scope();
     Ok(())
 }
 
@@ -242,7 +248,7 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
     output_module_headers(outfile, 1)?;
 
     // TODO remove or modify, this is a dummy var for 'output_stmts' below.
-    let scope = TrackedScope::new();
+    let mut scope = TrackedScope::new();
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("pub fn import_module() -> cannolib::Value {\n"
@@ -268,7 +274,7 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
         .insert(\"__module__\".to_string(), cannolib::Value::Bool(true));\n"
         .as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), None, 2, body)?;
+    output_stmts(outfile, &mut scope, None, 2, body)?;
 
     outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write("let cannoli_module_tbl = cannoli_scope_list.last().unwrap()\
@@ -282,57 +288,57 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
     Ok(())
 }
 
-fn output_stmts(outfile: &mut File, scope: TrackedScope,
+fn output_stmts(outfile: &mut File, scope: &mut TrackedScope,
     class_scope: ClassScope, indent: usize, stmts: &Vec<Statement>)
     -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
-        output_stmt(outfile, scope.clone(), class_scope.clone(), indent, stmt)?;
+        output_stmt(outfile, scope, class_scope.clone(), indent, stmt)?;
     }
     Ok(())
 }
 
-fn output_stmt(outfile: &mut File, scope: TrackedScope,
+fn output_stmt(outfile: &mut File, scope: &mut TrackedScope,
     class_scope: ClassScope, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     match *stmt {
         Statement::FunctionDef { .. } => output_stmt_funcdef(outfile,
-            scope.clone(), class_scope, indent, stmt),
+            scope, class_scope, indent, stmt),
         Statement::ClassDef { .. } =>
-            output_stmt_classdef(outfile, scope.clone(), indent, stmt),
+            output_stmt_classdef(outfile, scope, indent, stmt),
         Statement::Return { .. } =>
-            output_stmt_return(outfile, scope.clone(), indent, stmt),
+            output_stmt_return(outfile, scope, indent, stmt),
         Statement::Delete { .. } => unimplemented!(),
-        Statement::Assign { .. } => output_stmt_assign(outfile, scope.clone(),
+        Statement::Assign { .. } => output_stmt_assign(outfile, scope,
             class_scope, indent, stmt),
         Statement::AugAssign { .. } => output_stmt_aug_assign(outfile,
-            scope.clone(), class_scope, indent, stmt),
+            scope, class_scope, indent, stmt),
         Statement::AnnAssign { .. } => output_stmt_ann_assign(outfile,
-            scope.clone(), class_scope, indent, stmt),
+            scope, class_scope, indent, stmt),
         Statement::For { .. } =>
-            output_stmt_for(outfile, scope.clone(), indent, stmt),
+            output_stmt_for(outfile, scope, indent, stmt),
         Statement::While { .. } =>
-            output_stmt_while(outfile, scope.clone(), indent, stmt),
+            output_stmt_while(outfile, scope, indent, stmt),
         Statement::If { .. } =>
-            output_stmt_if(outfile, scope.clone(), indent, stmt),
+            output_stmt_if(outfile, scope, indent, stmt),
         Statement::With { .. } => unimplemented!(),
         Statement::Raise { .. } => unimplemented!(),
         Statement::Try { .. } => unimplemented!(),
         Statement::Assert { .. } => unimplemented!(),
         Statement::Import { .. } =>
-            output_stmt_import(outfile, scope.clone(), indent, stmt),
+            output_stmt_import(outfile, scope, indent, stmt),
         Statement::ImportFrom { .. } =>
-            output_stmt_import_from(outfile, scope.clone(), indent, stmt),
+            output_stmt_import_from(outfile, scope, indent, stmt),
         Statement::Global { .. } => unimplemented!(),
         Statement::Nonlocal { .. } => unimplemented!(),
         Statement::Expr { .. }  =>
-            output_stmt_expr(outfile, scope.clone(), indent, stmt),
+            output_stmt_expr(outfile, scope, indent, stmt),
         Statement::Pass => unimplemented!(),
         Statement::Break => unimplemented!(),
         Statement::Continue => unimplemented!()
     }
 }
 
-fn output_stmt_funcdef(outfile: &mut File, mut scope: TrackedScope,
+fn output_stmt_funcdef(outfile: &mut File, scope: &mut TrackedScope,
     class_scope: ClassScope, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (name, args, body, _decorator_list, _returns) = match *stmt {
@@ -375,7 +381,7 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: TrackedScope,
         .as_bytes()).unwrap();
 
     // setup parameters
-    output_parameters(outfile, scope.clone(), indent + 1, args)?;
+    output_parameters(outfile, scope, indent + 1, args)?;
 
     // TODO not outputting kwargs right now since it isn't needed for the
     // ray tracer and seems to be pretty complex. It might be something we axe.
@@ -383,7 +389,7 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: TrackedScope,
     //outfile.write("cannoli_scope_list.last_mut().unwrap().borrow_mut()\
     //    .extend(kwargs);\n".as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), None, indent + 1, body)?;
+    output_stmts(outfile, scope, None, indent + 1, body)?;
 
     // output default return value (None) and closing bracket
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
@@ -408,11 +414,12 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: TrackedScope,
             // func: '{}'\n", ndx, offset, local, name).as_bytes()).unwrap();
     }
 
+    scope.pop_scope();
     outfile.flush().unwrap();
     Ok(())
 }
 
-fn output_stmt_classdef(outfile: &mut File, mut scope: TrackedScope,
+fn output_stmt_classdef(outfile: &mut File, scope: &mut TrackedScope,
     indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let (name, _, _, body, _) = match *stmt {
         Statement::ClassDef { ref name, ref bases, ref keywords, ref body,
@@ -452,7 +459,7 @@ fn output_stmt_classdef(outfile: &mut File, mut scope: TrackedScope,
         \"{}\".to_string());\n", class_tbl.get("__name__").unwrap().0, name)
         .as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), Some(class_tbl), indent, body)?;
+    output_stmts(outfile, scope, Some(class_tbl), indent, body)?;
 
     // Add the new class definition to the current scope table
     let (ndx, offset, _) = scope.lookup_value(name)?;
@@ -465,7 +472,7 @@ fn output_stmt_classdef(outfile: &mut File, mut scope: TrackedScope,
     Ok(())
 }
 
-fn output_stmt_return(outfile: &mut File, scope: TrackedScope,
+fn output_stmt_return(outfile: &mut File, scope: &mut TrackedScope,
     indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let value = match *stmt {
         Statement::Return { ref value } => value,
@@ -474,7 +481,7 @@ fn output_stmt_return(outfile: &mut File, scope: TrackedScope,
 
     match *value {
         Some(ref value) => {
-            let value_local = output_expr(outfile, scope.clone(), indent,
+            let value_local = output_expr(outfile, scope, indent,
                 value)?;
 
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -491,24 +498,24 @@ fn output_stmt_return(outfile: &mut File, scope: TrackedScope,
     Ok(())
 }
 
-fn output_stmt_assign(outfile: &mut File, scope: TrackedScope,
+fn output_stmt_assign(outfile: &mut File, scope: &mut TrackedScope,
     class_scope: ClassScope, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (targets, value) = match *stmt {
         Statement::Assign { ref targets, ref value } => (targets, value),
         _ => unreachable!()
     };
-    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
+    let value_local = output_expr(outfile, scope, indent, value)?;
 
     for target in targets.iter() {
-        unpack_values(outfile, scope.clone(), indent, class_scope.clone(),
+        unpack_values(outfile, scope, indent, class_scope.clone(),
             &value_local, target, None)?;
     }
     Ok(())
 }
 
 // TODO ignores class_scope for now, I don't know if it even works in Python.
-fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope,
+fn output_stmt_aug_assign(outfile: &mut File, scope: &mut TrackedScope,
     _class_scope: ClassScope, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (target, op, value) = match *stmt {
@@ -516,7 +523,7 @@ fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope,
             (target, op, value),
         _ => unreachable!()
     };
-    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
+    let value_local = output_expr(outfile, scope, indent, value)?;
 
     match *target {
         Expression::Name { ref id, .. } => {
@@ -537,7 +544,7 @@ fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope,
     Ok(())
 }
 
-fn output_stmt_ann_assign(outfile: &mut File, scope: TrackedScope,
+fn output_stmt_ann_assign(outfile: &mut File, scope: &mut TrackedScope,
     class_scope: ClassScope, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (target, annotation, value) = match *stmt {
@@ -550,16 +557,16 @@ fn output_stmt_ann_assign(outfile: &mut File, scope: TrackedScope,
         },
         _ => unreachable!()
     };
-    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
+    let value_local = output_expr(outfile, scope, indent, value)?;
 
-    unpack_values(outfile, scope.clone(), indent, class_scope.clone(),
+    unpack_values(outfile, scope, indent, class_scope.clone(),
         &value_local, target, Some(annotation))?;
 
     Ok(())
 }
 
 // TODO add support for for-else
-fn output_stmt_for(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_stmt_for(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     stmt: &Statement) -> Result<(), CompilerError> {
     let (target, iter, body, _orelse) = match *stmt {
         Statement::For { ref target, ref iter, ref body, ref orelse } =>
@@ -567,7 +574,7 @@ fn output_stmt_for(outfile: &mut File, scope: TrackedScope, indent: usize,
         _ => unreachable!()
     };
     let iter_local = Local::new();
-    let seq_local = output_expr(outfile, scope.clone(), indent, iter)?;
+    let seq_local = output_expr(outfile, scope, indent, iter)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("let mut {} = {}.clone_seq().into_iter();\n",
@@ -581,32 +588,32 @@ fn output_stmt_for(outfile: &mut File, scope: TrackedScope, indent: usize,
         {}.next() {{ val }} else {{ break }};\n", next_local,
         iter_local).as_bytes()).unwrap();
 
-    unpack_values(outfile, scope.clone(), indent + 1, None, &next_local,
+    unpack_values(outfile, scope, indent + 1, None, &next_local,
         target, None)?;
-    output_stmts(outfile, scope.clone(), None, indent + 1, body)?;
+    output_stmts(outfile, scope, None, indent + 1, body)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
     Ok(())
 }
 
-fn output_stmt_while(outfile: &mut File, scope: TrackedScope, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+fn output_stmt_while(outfile: &mut File, scope: &mut TrackedScope,
+    indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let (test, body, orelse) = match *stmt {
         Statement::While { ref test, ref body, ref orelse } =>
             (test, body, orelse),
         _ => unreachable!()
     };
 
-    let condition = output_expr(outfile, scope.clone(), indent, test)?;
+    let condition = output_expr(outfile, scope, indent, test)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("while ({}).to_bool() {{\n",
         condition).as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), None, indent + 1, body)?;
+    output_stmts(outfile, scope, None, indent + 1, body)?;
 
     // update the condition variable
-    let loop_cond = output_expr(outfile, scope.clone(), indent + 1, test)?;
+    let loop_cond = output_expr(outfile, scope, indent + 1, test)?;
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
     outfile.write_all(format!("{} = {};\n", condition, loop_cond)
         .as_bytes()).unwrap();
@@ -616,12 +623,12 @@ fn output_stmt_while(outfile: &mut File, scope: TrackedScope, indent: usize,
 
     if !orelse.is_empty() {
         // Negate the WHILE condition and add an if-statement
-        let condition = output_expr(outfile, scope.clone(), indent, test)?;
+        let condition = output_expr(outfile, scope, indent, test)?;
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all(format!("if !({}).to_bool() {{\n",
             condition).as_bytes()).unwrap();
 
-        output_stmts(outfile, scope.clone(), None, indent + 1, orelse)?;
+        output_stmts(outfile, scope, None, indent + 1, orelse)?;
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("}\n".as_bytes()).unwrap();
@@ -629,7 +636,7 @@ fn output_stmt_while(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(())
 }
 
-fn output_stmt_if(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_stmt_if(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     stmt: &Statement) -> Result<(), CompilerError> {
     let (test, body, orelse) = match *stmt {
         Statement::If { ref test, ref body, ref orelse } =>
@@ -638,13 +645,13 @@ fn output_stmt_if(outfile: &mut File, scope: TrackedScope, indent: usize,
     };
 
     // guard and decorators
-    let test_local = output_expr(outfile, scope.clone(), indent, test)?;
+    let test_local = output_expr(outfile, scope, indent, test)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("if ({}).to_bool() {{\n", test_local)
         .as_bytes()).unwrap();
 
     // `then` body
-    output_stmts(outfile, scope.clone(), None, indent + 1, body)?;
+    output_stmts(outfile, scope, None, indent + 1, body)?;
 
     // closing decorator
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -653,7 +660,7 @@ fn output_stmt_if(outfile: &mut File, scope: TrackedScope, indent: usize,
     // check for elif/else
     if !orelse.is_empty() {
         outfile.write_all(" else {\n".as_bytes()).unwrap();
-        output_stmts(outfile, scope.clone(), None, indent + 1, orelse)?;
+        output_stmts(outfile, scope, None, indent + 1, orelse)?;
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("}\n".as_bytes()).unwrap();
     } else {
@@ -663,7 +670,7 @@ fn output_stmt_if(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(())
 }
 
-fn output_stmt_import(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_stmt_import(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     stmt: &Statement) -> Result<(), CompilerError> {
     let names = match *stmt {
         Statement::Import { ref names } => names,
@@ -707,7 +714,7 @@ fn output_stmt_import(outfile: &mut File, scope: TrackedScope, indent: usize,
 // dot imports "from . import x", etc.
 // TODO support vector scope optimization, we need to figure out a way to
 // handle wildcards.
-fn output_stmt_import_from(outfile: &mut File, _scope: TrackedScope,
+fn output_stmt_import_from(outfile: &mut File, _scope: &mut TrackedScope,
     indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let (module, names, _level) = match *stmt {
         Statement::ImportFrom { ref module, ref names, ref level } =>
@@ -769,14 +776,14 @@ fn output_stmt_import_from(outfile: &mut File, _scope: TrackedScope,
     Ok(())
 }
 
-fn output_stmt_expr(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_stmt_expr(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     stmt: &Statement) -> Result<(), CompilerError> {
     let expr = match *stmt {
         Statement::Expr { ref value } => value,
         _ => unreachable!()
     };
 
-    output_expr(outfile, scope.clone(), indent, expr)?;
+    output_expr(outfile, scope, indent, expr)?;
     Ok(())
 }
 
@@ -788,22 +795,22 @@ fn output_stmt_expr(outfile: &mut File, scope: TrackedScope, indent: usize,
 /// * `outfile` - the file that is being written out to
 /// * `indent` - defines the indent level for definitions
 /// * `expr` - Expression subtree of the AST that is being output
-fn output_expr(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     match *expr {
         Expression::BoolOp { .. } =>
-            output_expr_boolop(outfile, scope.clone(), indent, expr),
+            output_expr_boolop(outfile, scope, indent, expr),
         Expression::BinOp { .. } =>
-            output_expr_binop(outfile, scope.clone(), indent, expr),
+            output_expr_binop(outfile, scope, indent, expr),
         Expression::UnaryOp { .. } =>
-            output_expr_unaryop(outfile, scope.clone(), indent, expr),
+            output_expr_unaryop(outfile, scope, indent, expr),
         Expression::Lambda { .. } => unimplemented!(),
         Expression::If { .. } =>
-            output_expr_if(outfile, scope.clone(), indent, expr),
+            output_expr_if(outfile, scope, indent, expr),
         Expression::Dict { .. } => unimplemented!(),
         Expression::Set { .. } => unimplemented!(),
         Expression::ListComp { .. } =>
-            output_expr_listcomp(outfile, scope.clone(), indent, expr),
+            output_expr_listcomp(outfile, scope, indent, expr),
         Expression::SetComp { .. } => unimplemented!(),
         Expression::DictComp { .. } => unimplemented!(),
         Expression::Generator { .. } => unimplemented!(),
@@ -811,31 +818,31 @@ fn output_expr(outfile: &mut File, scope: TrackedScope, indent: usize,
         Expression::Yield { .. } => unimplemented!(),
         Expression::YieldFrom { .. } => unimplemented!(),
         Expression::Compare { .. } =>
-            output_expr_cmp(outfile, scope.clone(), indent, expr),
+            output_expr_cmp(outfile, scope, indent, expr),
         Expression::Call { .. } =>
-            output_expr_call(outfile, scope.clone(), indent, expr),
+            output_expr_call(outfile, scope, indent, expr),
         Expression::Num { ref n }  =>
-            output_expr_num(outfile, scope.clone(), indent, n),
+            output_expr_num(outfile, scope, indent, n),
         Expression::Str { ref s }  =>
-            output_expr_str(outfile, scope.clone(), indent, s),
+            output_expr_str(outfile, scope, indent, s),
         Expression::NameConstant { ref value } =>
-            output_expr_name_const(outfile, scope.clone(), indent, value),
+            output_expr_name_const(outfile, scope, indent, value),
         Expression::Ellipsis => unimplemented!(),
         Expression::Attribute { .. } =>
-            output_expr_attr(outfile, scope.clone(), indent, expr),
+            output_expr_attr(outfile, scope, indent, expr),
         Expression::Subscript { .. } =>
-            output_expr_subscript(outfile, scope.clone(), indent, expr),
+            output_expr_subscript(outfile, scope, indent, expr),
         Expression::Starred { .. } => unimplemented!(),
         Expression::Name { .. } =>
-            output_expr_name(outfile, scope.clone(), indent, expr),
+            output_expr_name(outfile, scope, indent, expr),
         Expression::List { .. } =>
-            output_expr_list(outfile, scope.clone(), indent, expr),
+            output_expr_list(outfile, scope, indent, expr),
         Expression::Tuple { .. } =>
-            output_expr_tuple(outfile, scope.clone(), indent, expr)
+            output_expr_tuple(outfile, scope, indent, expr)
     }
 }
 
-fn output_expr_boolop(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_boolop(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let (op, values) = match *expr {
         Expression::BoolOp { ref op, ref values } => (op, values),
@@ -843,7 +850,7 @@ fn output_expr_boolop(outfile: &mut File, scope: TrackedScope, indent: usize,
     };
     let mut expr_iter = values.iter();
     let local = Local::new();
-    let expr_local = output_expr(outfile, scope.clone(), indent,
+    let expr_local = output_expr(outfile, scope, indent,
         expr_iter.next().unwrap())?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -854,7 +861,7 @@ fn output_expr_boolop(outfile: &mut File, scope: TrackedScope, indent: usize,
             if !{}.to_bool() {{\n", local, expr_local).as_bytes()).unwrap(),
     }
 
-    rec_output_bool_op(outfile, scope.clone(), indent + 1, op, &expr_local,
+    rec_output_bool_op(outfile, scope, indent + 1, op, &expr_local,
         expr_iter)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -871,7 +878,7 @@ fn output_expr_boolop(outfile: &mut File, scope: TrackedScope, indent: usize,
 /// Recursively outputs if-expressions that mirror short-circuiting
 /// functionality, this has to be done due to how expressions are being written
 /// out. It's certainly not ideal but must be done.
-fn rec_output_bool_op(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn rec_output_bool_op(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     op: &BoolOperator, last: &Local, mut iter: Iter<Expression>)
     -> Result<(), CompilerError> {
     let expr = match iter.next() {
@@ -883,7 +890,7 @@ fn rec_output_bool_op(outfile: &mut File, scope: TrackedScope, indent: usize,
             return Ok(())
         }
     };
-    let expr_local = output_expr(outfile, scope.clone(), indent, expr)?;
+    let expr_local = output_expr(outfile, scope, indent, expr)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     match *op {
@@ -893,7 +900,7 @@ fn rec_output_bool_op(outfile: &mut File, scope: TrackedScope, indent: usize,
             expr_local).as_bytes()).unwrap(),
     }
 
-    rec_output_bool_op(outfile, scope.clone(), indent + 1, op, &expr_local,
+    rec_output_bool_op(outfile, scope, indent + 1, op, &expr_local,
         iter)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -906,7 +913,7 @@ fn rec_output_bool_op(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(())
 }
 
-fn output_expr_binop(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_binop(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (left, op, right) = match *expr {
@@ -914,8 +921,8 @@ fn output_expr_binop(outfile: &mut File, scope: TrackedScope, indent: usize,
         _ => unreachable!()
     };
     let local = Local::new();
-    let left_local = output_expr(outfile, scope.clone(), indent, left)?;
-    let right_local = output_expr(outfile, scope.clone(), indent, right)?;
+    let left_local = output_expr(outfile, scope, indent, left)?;
+    let right_local = output_expr(outfile, scope, indent, right)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = {};\n", local,
@@ -925,7 +932,7 @@ fn output_expr_binop(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_unaryop(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_unaryop(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (op, operand) = match *expr {
@@ -933,7 +940,7 @@ fn output_expr_unaryop(outfile: &mut File, scope: TrackedScope, indent: usize,
         _ => unreachable!()
     };
     let local = Local::new();
-    let operand_local = output_expr(outfile, scope.clone(), indent, operand)?;
+    let operand_local = output_expr(outfile, scope, indent, operand)?;
 
     output.push_str(&INDENT.repeat(indent));
     match *op {
@@ -956,7 +963,7 @@ fn output_expr_unaryop(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_if(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_if(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (test, body, orelse) = match *expr {
@@ -965,9 +972,9 @@ fn output_expr_if(outfile: &mut File, scope: TrackedScope, indent: usize,
         _ => unreachable!()
     };
     let local = Local::new();
-    let test_local = output_expr(outfile, scope.clone(), indent, test)?;
-    let body_local = output_expr(outfile, scope.clone(), indent, body)?;
-    let orelse_local = output_expr(outfile, scope.clone(), indent, orelse)?;
+    let test_local = output_expr(outfile, scope, indent, test)?;
+    let body_local = output_expr(outfile, scope, indent, body)?;
+    let orelse_local = output_expr(outfile, scope, indent, orelse)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = if ({}).to_bool() {{ {} }} \
@@ -977,7 +984,7 @@ fn output_expr_if(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_listcomp(outfile: &mut File, mut scope: TrackedScope,
+fn output_expr_listcomp(outfile: &mut File, scope: &mut TrackedScope,
     indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (elt, generators) = match *expr {
@@ -1009,7 +1016,7 @@ fn output_expr_listcomp(outfile: &mut File, mut scope: TrackedScope,
         .as_bytes()).unwrap();
 
     let gen_iter = generators.iter().peekable();
-    output_nested_listcomp(outfile, scope.clone(), indent, &list_local, elt,
+    output_nested_listcomp(outfile, scope, indent, &list_local, elt,
         gen_iter)?;
 
     output.push_str(&INDENT.repeat(indent));
@@ -1027,7 +1034,7 @@ fn output_expr_listcomp(outfile: &mut File, mut scope: TrackedScope,
 
 // Tail recurse on nested fors in a list comprehension this was done to print
 // matching brackets in a much cleaner way
-fn output_nested_listcomp(outfile: &mut File, scope: TrackedScope,
+fn output_nested_listcomp(outfile: &mut File, scope: &mut TrackedScope,
     indent: usize, list_local: &Local, elt: &Expression,
     mut gen_iter: Peekable<Iter<Comprehension>>) -> Result<(), CompilerError> {
     let comp = match gen_iter.next() {
@@ -1039,7 +1046,7 @@ fn output_nested_listcomp(outfile: &mut File, scope: TrackedScope,
             (target, iter, ifs)
     };
     let iter_local = Local::new();
-    let seq_local = output_expr(outfile, scope.clone(), indent, iter)?;
+    let seq_local = output_expr(outfile, scope, indent, iter)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("let mut {} = {}.clone_seq()\
@@ -1052,12 +1059,12 @@ fn output_nested_listcomp(outfile: &mut File, scope: TrackedScope,
     outfile.write_all(format!("let mut {} = if let Some(val) = \
         {}.next() {{ val }} else {{ break }};\n", next_local,
         iter_local).as_bytes()).unwrap();
-    unpack_values(outfile, scope.clone(), indent + 1, None, &next_local,
+    unpack_values(outfile, scope, indent + 1, None, &next_local,
         target, None)?;
 
     let mut conds = vec![];
     for cond in ifs.iter() {
-        let cond_local = output_expr(outfile, scope.clone(), indent + 1, cond)?;
+        let cond_local = output_expr(outfile, scope, indent + 1, cond)?;
         conds.push(cond_local);
     }
 
@@ -1085,7 +1092,7 @@ fn output_nested_listcomp(outfile: &mut File, scope: TrackedScope,
     let cond_indent = if conds.is_empty() { indent + 1 } else { indent + 2 };
     // For the most nested element we want to append the 'elt'
     if let None = gen_iter.peek() {
-        let elt_local = output_expr(outfile, scope.clone(), cond_indent, elt)?;
+        let elt_local = output_expr(outfile, scope, cond_indent, elt)?;
 
         outfile.write(INDENT.repeat(cond_indent).as_bytes()).unwrap();
         outfile.write(format!("{}.push({});\n", list_local, elt_local)
@@ -1093,7 +1100,7 @@ fn output_nested_listcomp(outfile: &mut File, scope: TrackedScope,
     }
 
     // recurse before we output closing brackets
-    output_nested_listcomp(outfile, scope.clone(), cond_indent, list_local, elt,
+    output_nested_listcomp(outfile, scope, cond_indent, list_local, elt,
         gen_iter)?;
 
     if !conds.is_empty() {
@@ -1106,7 +1113,7 @@ fn output_nested_listcomp(outfile: &mut File, scope: TrackedScope,
     Ok(())
 }
 
-fn output_expr_cmp(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_cmp(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (left, ops, comparators) = match *expr {
@@ -1115,7 +1122,7 @@ fn output_expr_cmp(outfile: &mut File, scope: TrackedScope, indent: usize,
         _ => unreachable!()
     };
     let local = Local::new();
-    let left_local = output_expr(outfile, scope.clone(), indent, left)?;
+    let left_local = output_expr(outfile, scope, indent, left)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = cannolib::Value::Bool(({}", local,
@@ -1125,13 +1132,13 @@ fn output_expr_cmp(outfile: &mut File, scope: TrackedScope, indent: usize,
     loop {
         match cmp_iter.next() {
             Some((op, comparator)) => {
-                let cmp_local = output_expr(outfile, scope.clone(), indent,
+                let cmp_local = output_expr(outfile, scope, indent,
                     comparator)?;
                 output.push_str(&format!("{})", output_cmp_operator(op,
                     &cmp_local)?));
 
                 if let Some(_) = cmp_iter.peek() {
-                    let cmp_local = output_expr(outfile, scope.clone(), indent,
+                    let cmp_local = output_expr(outfile, scope, indent,
                         comparator)?;
                     output.push_str(&format!(" && ({}", cmp_local));
                 }
@@ -1145,7 +1152,7 @@ fn output_expr_cmp(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_call(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_call(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (func, args, keywords) = match *expr {
@@ -1161,7 +1168,7 @@ fn output_expr_call(outfile: &mut File, scope: TrackedScope, indent: usize,
         let (arg, value) = match *keyword {
             Keyword::Keyword { ref arg, ref value } => (arg.clone(), value)
         };
-        let kw_local = output_expr(outfile, scope.clone(), indent, value)?;
+        let kw_local = output_expr(outfile, scope, indent, value)?;
 
         output.push_str(&INDENT.repeat(indent));
         output.push_str(&format!("kwargs.insert(\"{}\".to_string(), {});\n",
@@ -1171,13 +1178,13 @@ fn output_expr_call(outfile: &mut File, scope: TrackedScope, indent: usize,
     output.push_str(&INDENT.repeat(indent));
     match **func {
         Expression::Attribute { ref value, ref attr, .. } => {
-            let value_local = output_expr(outfile, scope.clone(), indent,
+            let value_local = output_expr(outfile, scope, indent,
                 value)?;
             output.push_str(&format!("let mut {} = cannolib::call_member({}, \
                 \"{}\", vec![", local, value_local, attr));
         },
         _ => {
-            let func_local = output_expr(outfile, scope.clone(), indent, func)?;
+            let func_local = output_expr(outfile, scope, indent, func)?;
             output.push_str(&format!("let mut {} = {}.call(vec![",
                 local, func_local));
         }
@@ -1187,7 +1194,7 @@ fn output_expr_call(outfile: &mut File, scope: TrackedScope, indent: usize,
     loop {
         match args_iter.next() {
             Some(expr) => {
-                let expr_local = output_expr(outfile, scope.clone(), indent,
+                let expr_local = output_expr(outfile, scope, indent,
                     expr)?;
                 output.push_str(&format!("{}", expr_local));
 
@@ -1204,7 +1211,7 @@ fn output_expr_call(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_num(outfile: &mut File, _scope: TrackedScope, indent: usize,
+fn output_expr_num(outfile: &mut File, _scope: &mut TrackedScope, indent: usize,
     num: &Number) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let out_str = match *num {
@@ -1239,7 +1246,7 @@ fn output_expr_num(outfile: &mut File, _scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_str(outfile: &mut File, _scope: TrackedScope, indent: usize,
+fn output_expr_str(outfile: &mut File, _scope: &mut TrackedScope, indent: usize,
     string: &String) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let out_str = format!("cannolib::Value::Str(\"{}\".to_string())", string);
@@ -1252,7 +1259,7 @@ fn output_expr_str(outfile: &mut File, _scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_name_const(outfile: &mut File, _scope: TrackedScope,
+fn output_expr_name_const(outfile: &mut File, _scope: &mut TrackedScope,
     indent: usize, value: &Singleton) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let out_str = match *value {
@@ -1269,7 +1276,7 @@ fn output_expr_name_const(outfile: &mut File, _scope: TrackedScope,
     Ok(local)
 }
 
-fn output_expr_attr(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_attr(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (value, attr, _ctx) = match *expr {
@@ -1278,7 +1285,7 @@ fn output_expr_attr(outfile: &mut File, scope: TrackedScope, indent: usize,
         _ => unreachable!()
     };
     let local = Local::new();
-    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
+    let value_local = output_expr(outfile, scope, indent, value)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = {}.get_attr(\"{}\");\n", local,
@@ -1288,7 +1295,7 @@ fn output_expr_attr(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_subscript(outfile: &mut File, scope: TrackedScope,
+fn output_expr_subscript(outfile: &mut File, scope: &mut TrackedScope,
     indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (value, slice, _ctx) = match *expr {
@@ -1297,13 +1304,13 @@ fn output_expr_subscript(outfile: &mut File, scope: TrackedScope,
         _ => unreachable!()
     };
     let local = Local::new();
-    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
+    let value_local = output_expr(outfile, scope, indent, value)?;
 
     match **slice {
         Slice::Slice { ref lower, ref upper, ref step } => {
             let lower_arg = match *lower {
                 Some(ref expr) => {
-                    let expr_local = output_expr(outfile, scope.clone(),
+                    let expr_local = output_expr(outfile, scope,
                         indent, expr)?;
                     format!("Some({})", expr_local)
                 },
@@ -1311,7 +1318,7 @@ fn output_expr_subscript(outfile: &mut File, scope: TrackedScope,
             };
             let upper_arg = match *upper {
                 Some(ref expr) => {
-                    let expr_local = output_expr(outfile, scope.clone(),
+                    let expr_local = output_expr(outfile, scope,
                         indent, expr)?;
                     format!("Some({})", expr_local)
                 },
@@ -1319,7 +1326,7 @@ fn output_expr_subscript(outfile: &mut File, scope: TrackedScope,
             };
             let step_arg = match *step {
                 Some(ref expr) => {
-                    let expr_local = output_expr(outfile, scope.clone(),
+                    let expr_local = output_expr(outfile, scope,
                         indent, expr)?;
                     format!("Some({})", expr_local)
                 },
@@ -1332,7 +1339,7 @@ fn output_expr_subscript(outfile: &mut File, scope: TrackedScope,
         },
         Slice::ExtSlice { .. } => unimplemented!(),
         Slice::Index { ref value } => {
-            let index_local = output_expr(outfile, scope.clone(),
+            let index_local = output_expr(outfile, scope,
                 indent, value)?;
 
             output.push_str(&INDENT.repeat(indent));
@@ -1345,7 +1352,7 @@ fn output_expr_subscript(outfile: &mut File, scope: TrackedScope,
     Ok(local)
 }
 
-fn output_expr_name(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_name(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (id, _ctx) = match *expr {
@@ -1363,7 +1370,7 @@ fn output_expr_name(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_list(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_list(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (elts, _ctx) = match *expr {
@@ -1376,7 +1383,7 @@ fn output_expr_list(outfile: &mut File, scope: TrackedScope, indent: usize,
     output.push_str(&format!("let mut cannoli_list_builder = Vec::new();\n"));
 
     for elt in elts.iter() {
-        let elt_local = output_expr(outfile, scope.clone(), indent, elt)?;
+        let elt_local = output_expr(outfile, scope, indent, elt)?;
 
         output.push_str(&INDENT.repeat(indent));
         output.push_str(&format!("cannoli_list_builder.push({});\n",
@@ -1392,7 +1399,7 @@ fn output_expr_list(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_tuple(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_expr_tuple(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (elts, _ctx) = match *expr {
@@ -1405,7 +1412,7 @@ fn output_expr_tuple(outfile: &mut File, scope: TrackedScope, indent: usize,
     output.push_str(&format!("let mut cannoli_tuple_builder = Vec::new();\n"));
 
     for elt in elts.iter() {
-        let elt_local = output_expr(outfile, scope.clone(), indent, elt)?;
+        let elt_local = output_expr(outfile, scope, indent, elt)?;
 
         output.push_str(&INDENT.repeat(indent));
         output.push_str(&format!("cannoli_tuple_builder.push({});\n",
@@ -1420,7 +1427,7 @@ fn output_expr_tuple(outfile: &mut File, scope: TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_parameters(outfile: &mut File, scope: TrackedScope, indent: usize,
+fn output_parameters(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     params: &Arguments) -> Result<(), CompilerError> {
     let (args, _vararg, _kwonlyargs, _kw_defaults, _kwarg, _defaults) =
     match *params {
@@ -1491,7 +1498,7 @@ fn output_cmp_operator(op: &CmpOperator, val: &Local)
 /// Tail-recursive function that recursively unpacks values. Passing 'None' for
 /// class_scope will default to looking up the value in the current scope,
 /// this value is used when dealing with classes.
-fn unpack_values(outfile: &mut File, mut scope: TrackedScope, indent: usize,
+fn unpack_values(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     class_scope: ClassScope, packed_values: &Local, target: &Expression,
     annotation: Option<&Expression>) -> Result<(), CompilerError> {
     match *target {
@@ -1521,7 +1528,7 @@ fn unpack_values(outfile: &mut File, mut scope: TrackedScope, indent: usize,
             }
         },
         Expression::Attribute { ref value, ref attr, .. } => {
-            let base_local = output_expr(outfile, scope.clone(),
+            let base_local = output_expr(outfile, scope,
                 indent, value)?;
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
             outfile.write_all(format!("cannolib::attr_assign({}, \"{}\", {}\
@@ -1545,7 +1552,7 @@ fn unpack_values(outfile: &mut File, mut scope: TrackedScope, indent: usize,
                             cannolib::Value::Number(cannolib::NumericType::\
                             Integer({})));\n", local, packed_values, ndx)
                             .as_bytes()).unwrap();
-                        unpack_values(outfile, scope.clone(), indent,
+                        unpack_values(outfile, scope, indent,
                             class_scope.clone(), &local, elt, annotation)?;
                     },
                     _ => unimplemented!()
