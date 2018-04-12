@@ -1,4 +1,5 @@
 class Test:
+   g = "hello"
    def __init__(self, x):
       self.x = x
       self.y = "hello"
@@ -27,3 +28,6 @@ print(c.x, c.y)
 
 b.x = 499
 print(c.x, c.y)
+
+print(a.g)
+print(Test.g)

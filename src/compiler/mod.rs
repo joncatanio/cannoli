@@ -216,9 +216,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
         cannolib::Value::Str(\"__main__\".to_string());\n", ndx, offset)
         .as_bytes()).unwrap();
 
-    println!("SCOPE: {:?}", scope);
     output_stmts(outfile, &mut scope, None, 2, body)?;
-    println!("SCOPE: {:?}", scope);
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
@@ -1287,9 +1285,26 @@ fn output_expr_attr(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     let local = Local::new();
     let value_local = output_expr(outfile, scope, indent, value)?;
 
+    // Try to skip the 'get_attr' call if we know the type already
     output.push_str(&INDENT.repeat(indent));
-    output.push_str(&format!("let mut {} = {}.get_attr(\"{}\");\n", local,
-        value_local, attr));
+    output.push_str(&format!("let mut {} = ", local));
+    if let Some((_, _, Some(vtype))) = scope.lookup_expr(value) {
+        let ndx = scope.lookup_attr(&vtype, attr)?;
+
+        output.push_str(&format!("match {} {{\n", value_local));
+        output.push_str(&INDENT.repeat(indent + 1));
+        output.push_str(&format!("cannolib::Value::Object {{ members, .. }} \
+            => members.borrow()[{}].clone(),\n", ndx));
+        output.push_str(&INDENT.repeat(indent + 1));
+        output.push_str(&format!("cannolib::Value::Class {{ members, .. }} \
+            => members[{}].clone(),\n", ndx));
+        output.push_str(&INDENT.repeat(indent + 1));
+        output.push_str("_ => panic!(\"bad annotation\")\n");
+        output.push_str(&INDENT.repeat(indent));
+        output.push_str("};\n");
+    } else {
+        output.push_str(&format!("{}.get_attr(\"{}\");\n", value_local, attr));
+    }
 
     outfile.write_all(output.as_bytes()).unwrap();
     Ok(local)
