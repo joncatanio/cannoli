@@ -498,13 +498,8 @@ fn output_stmt_assign(outfile: &mut File, scope: TrackedScope,
         Statement::Assign { ref targets, ref value } => (targets, value),
         _ => unreachable!()
     };
-
-    // For each target determine if it's a Name/Attribute/Subscript and handle
-    // each differently. Name values should be inserted into the current scope
-    // list. Attributes should call a member function on Value that modifies
-    // the object's internal tbl. Subscript should also call a member function
-    // but only work on lists and dicts.
     let value_local = output_expr(outfile, scope.clone(), indent, value)?;
+
     for target in targets.iter() {
         unpack_values(outfile, scope.clone(), indent, class_scope.clone(),
             &value_local, target)?;
@@ -521,8 +516,8 @@ fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope,
             (target, op, value),
         _ => unreachable!()
     };
-
     let value_local = output_expr(outfile, scope.clone(), indent, value)?;
+
     match *target {
         Expression::Name { ref id, .. } => {
             let local = Local::new();
@@ -542,15 +537,17 @@ fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope,
     Ok(())
 }
 
-fn output_stmt_ann_assign(_outfile: &mut File, _scope: TrackedScope,
-    _class_scope: ClassScope, _indent: usize, stmt: &Statement)
+fn output_stmt_ann_assign(outfile: &mut File, scope: TrackedScope,
+    _class_scope: ClassScope, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
-    let (_target, _annotation, _value) = match *stmt {
+    let (_target, _annotation, value) = match *stmt {
         Statement::AnnAssign { ref target, ref annotation, ref value } =>
             (target, annotation, value),
         _ => unreachable!()
     };
-    unimplemented!()
+    let value_local = output_expr(outfile, scope.clone(), indent, value)?;
+
+    Ok(())
 }
 
 // TODO add support for for-else
