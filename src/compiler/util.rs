@@ -190,7 +190,7 @@ fn rec_gather_class_init(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
                     unpack_assign_alias(scope, target, self_alias)?;
                 }
             },
-            Statement::For { ref target, iter: _, ref body, ref orelse } => {
+            Statement::For { ref body, ref orelse, .. } => {
                 rec_gather_class_init(scope, body, self_alias)?;
                 rec_gather_class_init(scope, orelse, self_alias)?;
             },

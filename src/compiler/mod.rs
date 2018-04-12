@@ -212,7 +212,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
         cannolib::Value::Str(\"__main__\".to_string());\n", ndx, offset)
         .as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), false, 2, body)?;
+    output_stmts(outfile, scope.clone(), None, 2, body)?;
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
@@ -264,7 +264,7 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
         .insert(\"__module__\".to_string(), cannolib::Value::Bool(true));\n"
         .as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), false, 2, body)?;
+    output_stmts(outfile, scope.clone(), None, 2, body)?;
 
     outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write("let cannoli_module_tbl = cannoli_scope_list.last().unwrap()\
@@ -279,17 +279,17 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
 }
 
 fn output_stmts(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
-    class_scope: bool, indent: usize, stmts: &Vec<Statement>)
-    -> Result<(), CompilerError> {
+    class_scope: Option<HashMap<String, usize>>, indent: usize,
+    stmts: &Vec<Statement>) -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
-        output_stmt(outfile, scope.clone(), class_scope, indent, stmt)?;
+        output_stmt(outfile, scope.clone(), class_scope.clone(), indent, stmt)?;
     }
     Ok(())
 }
 
 fn output_stmt(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
-    class_scope: bool, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+    class_scope: Option<HashMap<String, usize>>, indent: usize,
+    stmt: &Statement) -> Result<(), CompilerError> {
     match *stmt {
         Statement::FunctionDef { .. } => output_stmt_funcdef(outfile,
             scope.clone(), class_scope, indent, stmt),
@@ -329,8 +329,8 @@ fn output_stmt(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
 }
 
 fn output_stmt_funcdef(outfile: &mut File, mut scope: Vec<HashMap<String,
-    usize>>, class_scope: bool, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+    usize>>, class_scope: Option<HashMap<String, usize>>, indent: usize,
+    stmt: &Statement) -> Result<(), CompilerError> {
     let (name, args, body, _decorator_list, _returns) = match *stmt {
         Statement::FunctionDef { ref name, ref args, ref body,
             ref decorator_list, ref returns } =>
@@ -379,7 +379,7 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: Vec<HashMap<String,
     //outfile.write("cannoli_scope_list.last_mut().unwrap().borrow_mut()\
     //    .extend(kwargs);\n".as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), false, indent + 1, body)?;
+    output_stmts(outfile, scope.clone(), None, indent + 1, body)?;
 
     // output default return value (None) and closing bracket
     outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
@@ -389,9 +389,15 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: Vec<HashMap<String,
 
     // assign the function pointer to either the class scope or default scope
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    if class_scope {
-        outfile.write(format!("cannoli_object_tbl.insert(\"{}\".to_string(), \
-            {});\n", name, local).as_bytes()).unwrap();
+    if let Some(tbl) = class_scope {
+        let ndx = if let Some(ndx) = tbl.get(name) {
+            ndx
+        } else {
+            return Err(CompilerError::NameError(name.to_string()))
+        };
+
+        outfile.write(format!("cannoli_object_vec[{}] = {}; // func: '{}'\n",
+            ndx, local, name).as_bytes()).unwrap();
     } else {
         let (ndx, offset) = util::lookup_value(&scope, name)?;
         outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = {}; \
@@ -410,27 +416,44 @@ fn output_stmt_classdef(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
             decorator_list),
         _ => unreachable!()
     };
+    let mut class_tbl = util::gather_scope(body, 0, true)?;
+    let offset = class_tbl.len();
+    class_tbl.insert("__name__".to_string(), offset);
 
-    println!("CLASS SCOPE: {:?}", util::gather_scope(body, 0, true)?);
-
+    // Setup the HashMap that maps the offsets in the object vector
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write("let mut cannoli_object_tbl = \
         std::collections::HashMap::new();\n".as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), true, indent, body)?;
+    for (member, ndx) in class_tbl.iter() {
+        outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+        outfile.write(format!("cannoli_object_tbl.insert(\"{}\".to_string(), \
+            {});\n", member, ndx).as_bytes()).unwrap();
+    }
+
+    // Initialize the object vector
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write(format!("let mut cannoli_object_vec = Vec::\
+        with_capacity({});\n", class_tbl.len()).as_bytes()).unwrap();
+    outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+    outfile.write_all(format!("cannoli_object_vec.resize({}, cannolib::Value::\
+        Undefined);\n", class_tbl.len()).as_bytes()).unwrap();
 
     // Add meta information into the table
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write(format!("cannoli_object_tbl.insert(\"__name__\"\
-        .to_string(), cannolib::Value::Str(\"{}\".to_string()));\n",
-        name).as_bytes()).unwrap();
+    outfile.write(format!("cannoli_object_vec[{}] = cannolib::Value::Str(\
+        \"{}\".to_string());\n", class_tbl.get("__name__").unwrap(), name)
+        .as_bytes()).unwrap();
+
+    output_stmts(outfile, scope.clone(), Some(class_tbl), indent, body)?;
 
     // Add the new class definition to the current scope table
     let (ndx, offset) = util::lookup_value(&scope, name)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
-        cannolib::Value::Class {{ tbl: cannoli_object_tbl }}; // class: '{}'\n",
-        ndx, offset, name).as_bytes()).unwrap();
+        cannolib::Value::Class {{ tbl: std::rc::Rc::new(cannoli_object_tbl), \
+        members: cannoli_object_vec }}; // class: '{}'\n", ndx, offset, name)
+        .as_bytes()).unwrap();
 
     Ok(())
 }
@@ -462,19 +485,12 @@ fn output_stmt_return(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
 }
 
 fn output_stmt_assign(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
-    class_scope: bool, indent: usize, stmt: &Statement)
-    -> Result<(), CompilerError> {
+    class_scope: Option<HashMap<String, usize>>, indent: usize,
+    stmt: &Statement) -> Result<(), CompilerError> {
     let (targets, value) = match *stmt {
         Statement::Assign { ref targets, ref value } => (targets, value),
         _ => unreachable!()
     };
-    let prefix: Option<&str>;
-
-    if class_scope {
-        prefix = Some("cannoli_object_tbl");
-    } else {
-        prefix = None;
-    }
 
     // For each target determine if it's a Name/Attribute/Subscript and handle
     // each differently. Name values should be inserted into the current scope
@@ -483,7 +499,7 @@ fn output_stmt_assign(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     // but only work on lists and dicts.
     let value_local = output_expr(outfile, scope.clone(), indent, value)?;
     for target in targets.iter() {
-        unpack_values(outfile, scope.clone(), indent, prefix,
+        unpack_values(outfile, scope.clone(), indent, class_scope.clone(),
             &value_local, target)?;
     }
     Ok(())
@@ -491,8 +507,9 @@ fn output_stmt_assign(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
 
 // TODO ignores class_scope for now, I don't know if it even works in Python.
 fn output_stmt_aug_assign(outfile: &mut File,
-    scope: Vec<HashMap<String, usize>>, _class_scope: bool, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+    scope: Vec<HashMap<String, usize>>, _class_scope:
+    Option<HashMap<String, usize>>, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
     let (target, op, value) = match *stmt {
         Statement::AugAssign { ref target, ref op, ref value } =>
             (target, op, value),
@@ -519,10 +536,11 @@ fn output_stmt_aug_assign(outfile: &mut File,
     Ok(())
 }
 
-fn output_stmt_ann_assign(outfile: &mut File,
-    scope: Vec<HashMap<String, usize>>, _class_scope: bool, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
-    let (target, annotation, value) = match *stmt {
+fn output_stmt_ann_assign(_outfile: &mut File,
+    _scope: Vec<HashMap<String, usize>>, _class_scope:
+    Option<HashMap<String, usize>>, _indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
+    let (_target, _annotation, _value) = match *stmt {
         Statement::AnnAssign { ref target, ref annotation, ref value } =>
             (target, annotation, value),
         _ => unreachable!()
@@ -555,7 +573,7 @@ fn output_stmt_for(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
 
     unpack_values(outfile, scope.clone(), indent + 1, None, &next_local,
         target)?;
-    output_stmts(outfile, scope.clone(), false, indent + 1, body)?;
+    output_stmts(outfile, scope.clone(), None, indent + 1, body)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all("}\n".as_bytes()).unwrap();
@@ -575,7 +593,7 @@ fn output_stmt_while(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     outfile.write_all(format!("while ({}).to_bool() {{\n",
         condition).as_bytes()).unwrap();
 
-    output_stmts(outfile, scope.clone(), false, indent + 1, body)?;
+    output_stmts(outfile, scope.clone(), None, indent + 1, body)?;
 
     // update the condition variable
     let loop_cond = output_expr(outfile, scope.clone(), indent + 1, test)?;
@@ -593,7 +611,7 @@ fn output_stmt_while(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
         outfile.write_all(format!("if !({}).to_bool() {{\n",
             condition).as_bytes()).unwrap();
 
-        output_stmts(outfile, scope.clone(), false, indent + 1, orelse)?;
+        output_stmts(outfile, scope.clone(), None, indent + 1, orelse)?;
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("}\n".as_bytes()).unwrap();
@@ -616,7 +634,7 @@ fn output_stmt_if(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
         .as_bytes()).unwrap();
 
     // `then` body
-    output_stmts(outfile, scope.clone(), false, indent + 1, body)?;
+    output_stmts(outfile, scope.clone(), None, indent + 1, body)?;
 
     // closing decorator
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -625,7 +643,7 @@ fn output_stmt_if(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
     // check for elif/else
     if !orelse.is_empty() {
         outfile.write_all(" else {\n".as_bytes()).unwrap();
-        output_stmts(outfile, scope.clone(), false, indent + 1, orelse)?;
+        output_stmts(outfile, scope.clone(), None, indent + 1, orelse)?;
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write_all("}\n".as_bytes()).unwrap();
     } else {
@@ -1463,27 +1481,30 @@ fn output_cmp_operator(op: &CmpOperator, val: &Local)
 
 // TODO add list support when needed, should be just like Tuples
 /// Tail-recursive function that recursively unpacks values. Passing 'None' for
-/// scope_type will default to looking up the value in the current scope,
-/// typically this value is used when dealing with classes.
+/// class_scope will default to looking up the value in the current scope,
+/// this value is used when dealing with classes.
 fn unpack_values(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
-    indent: usize, scope_type: Option<&str>, packed_values: &Local,
-    target: &Expression) -> Result<(), CompilerError> {
+    indent: usize, class_scope: Option<HashMap<String, usize>>,
+    packed_values: &Local, target: &Expression) -> Result<(), CompilerError> {
     match *target {
         Expression::Name { ref id, .. } => {
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
 
-            match scope_type {
-                Some(s) => {
-                    outfile.write_all(format!("{}.insert(\"{}\".to_string(), \
-                        {});\n", s, id, packed_values).as_bytes())
-                        .unwrap();
-                },
-                None => {
-                    let (ndx, offset) = util::lookup_value(&scope, id)?;
-                    outfile.write_all(format!("cannoli_scope_list[{}].borrow\
-                        _mut()[{}] = {}; // id: '{}'\n", ndx, offset,
-                        packed_values, id).as_bytes()).unwrap();
-                }
+            if let Some(tbl) = class_scope {
+                let ndx = if let Some(ndx) = tbl.get(id) {
+                    ndx
+                } else {
+                    return Err(CompilerError::NameError(id.to_string()))
+                };
+
+                outfile.write_all(format!("cannoli_object_vec[{}] = {}; \
+                    // id: '{}'\n", ndx, packed_values, id)
+                    .as_bytes()).unwrap();
+            } else {
+                let (ndx, offset) = util::lookup_value(&scope, id)?;
+                outfile.write_all(format!("cannoli_scope_list[{}].borrow\
+                    _mut()[{}] = {}; // id: '{}'\n", ndx, offset,
+                    packed_values, id).as_bytes()).unwrap();
             }
         },
         Expression::Attribute { ref value, ref attr, .. } => {
@@ -1512,7 +1533,7 @@ fn unpack_values(outfile: &mut File, scope: Vec<HashMap<String, usize>>,
                             Integer({})));\n", local, packed_values, ndx)
                             .as_bytes()).unwrap();
                         unpack_values(outfile, scope.clone(), indent,
-                            scope_type, &local, elt)?;
+                            class_scope.clone(), &local, elt)?;
                     },
                     _ => unimplemented!()
                 }
