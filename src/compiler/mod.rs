@@ -20,6 +20,8 @@ use self::util::TrackedScope;
 
 const INDENT: &str = "    ";
 
+type ClassScope = Option<HashMap<String, (usize, Option<String>)>>;
+
 // Needed global mutable variables that could represent compilation state, I
 // didn't want to do it this way but have no time for a refactor.
 lazy_static! {
@@ -179,7 +181,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     // Insert meta data into the scope on the compiler side, this is also
     // setup below to be used at runtime. Then appened the updated scope.
     let offset = current_scope.len();
-    current_scope.insert("__name__".to_string(), offset);
+    current_scope.insert("__name__".to_string(), (offset, None));
 
     let capacity = current_scope.len();
     scope.push_scope(current_scope);
@@ -208,7 +210,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
         .as_bytes()).unwrap();
 
     // Output metadata from the map
-    let (ndx, offset) = scope.lookup_value("__name__")?;
+    let (ndx, offset, _) = scope.lookup_value("__name__")?;
     outfile.write(INDENT.repeat(2).as_bytes()).unwrap();
     outfile.write_all(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
         cannolib::Value::Str(\"__main__\".to_string());\n", ndx, offset)
@@ -281,8 +283,8 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
 }
 
 fn output_stmts(outfile: &mut File, scope: TrackedScope,
-    class_scope: Option<HashMap<String, usize>>, indent: usize,
-    stmts: &Vec<Statement>) -> Result<(), CompilerError> {
+    class_scope: ClassScope, indent: usize, stmts: &Vec<Statement>)
+    -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
         output_stmt(outfile, scope.clone(), class_scope.clone(), indent, stmt)?;
     }
@@ -290,8 +292,8 @@ fn output_stmts(outfile: &mut File, scope: TrackedScope,
 }
 
 fn output_stmt(outfile: &mut File, scope: TrackedScope,
-    class_scope: Option<HashMap<String, usize>>, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+    class_scope: ClassScope, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
     match *stmt {
         Statement::FunctionDef { .. } => output_stmt_funcdef(outfile,
             scope.clone(), class_scope, indent, stmt),
@@ -331,8 +333,8 @@ fn output_stmt(outfile: &mut File, scope: TrackedScope,
 }
 
 fn output_stmt_funcdef(outfile: &mut File, mut scope: TrackedScope,
-    class_scope: Option<HashMap<String, usize>>, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+    class_scope: ClassScope, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
     let (name, args, body, _decorator_list, _returns) = match *stmt {
         Statement::FunctionDef { ref name, ref args, ref body,
             ref decorator_list, ref returns } =>
@@ -392,7 +394,7 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: TrackedScope,
     // assign the function pointer to either the class scope or default scope
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     if let Some(tbl) = class_scope {
-        let ndx = if let Some(ndx) = tbl.get(name) {
+        let ndx = if let Some(&(ref ndx, _)) = tbl.get(name) {
             ndx
         } else {
             return Err(CompilerError::NameError(name.to_string()))
@@ -401,7 +403,7 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: TrackedScope,
         outfile.write(format!("cannoli_object_vec[{}] = {}; // func: '{}'\n",
             ndx, local, name).as_bytes()).unwrap();
     } else {
-        let (ndx, offset) = scope.lookup_value(name)?;
+        let (ndx, offset, _) = scope.lookup_value(name)?;
         outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = {}; \
             // func: '{}'\n", ndx, offset, local, name).as_bytes()).unwrap();
     }
@@ -410,7 +412,7 @@ fn output_stmt_funcdef(outfile: &mut File, mut scope: TrackedScope,
     Ok(())
 }
 
-fn output_stmt_classdef(outfile: &mut File, scope: TrackedScope,
+fn output_stmt_classdef(outfile: &mut File, mut scope: TrackedScope,
     indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let (name, _, _, body, _) = match *stmt {
         Statement::ClassDef { ref name, ref bases, ref keywords, ref body,
@@ -420,14 +422,17 @@ fn output_stmt_classdef(outfile: &mut File, scope: TrackedScope,
     };
     let mut class_tbl = util::gather_scope(body, 0, true)?;
     let offset = class_tbl.len();
-    class_tbl.insert("__name__".to_string(), offset);
+    class_tbl.insert("__name__".to_string(), (offset, None));
+
+    // Add the class to the scope class map
+    scope.insert_class(name, class_tbl.clone());
 
     // Setup the HashMap that maps the offsets in the object vector
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write("let mut cannoli_object_tbl = \
         std::collections::HashMap::new();\n".as_bytes()).unwrap();
 
-    for (member, ndx) in class_tbl.iter() {
+    for (member, &(ref ndx, _)) in class_tbl.iter() {
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write(format!("cannoli_object_tbl.insert(\"{}\".to_string(), \
             {});\n", member, ndx).as_bytes()).unwrap();
@@ -444,13 +449,13 @@ fn output_stmt_classdef(outfile: &mut File, scope: TrackedScope,
     // Add meta information into the table
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write(format!("cannoli_object_vec[{}] = cannolib::Value::Str(\
-        \"{}\".to_string());\n", class_tbl.get("__name__").unwrap(), name)
+        \"{}\".to_string());\n", class_tbl.get("__name__").unwrap().0, name)
         .as_bytes()).unwrap();
 
     output_stmts(outfile, scope.clone(), Some(class_tbl), indent, body)?;
 
     // Add the new class definition to the current scope table
-    let (ndx, offset) = scope.lookup_value(name)?;
+    let (ndx, offset, _) = scope.lookup_value(name)?;
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write_all(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
         cannolib::Value::Class {{ tbl: std::rc::Rc::new(cannoli_object_tbl), \
@@ -487,8 +492,8 @@ fn output_stmt_return(outfile: &mut File, scope: TrackedScope,
 }
 
 fn output_stmt_assign(outfile: &mut File, scope: TrackedScope,
-    class_scope: Option<HashMap<String, usize>>, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+    class_scope: ClassScope, indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
     let (targets, value) = match *stmt {
         Statement::Assign { ref targets, ref value } => (targets, value),
         _ => unreachable!()
@@ -508,8 +513,8 @@ fn output_stmt_assign(outfile: &mut File, scope: TrackedScope,
 }
 
 // TODO ignores class_scope for now, I don't know if it even works in Python.
-fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope, _class_scope:
-    Option<HashMap<String, usize>>, indent: usize, stmt: &Statement)
+fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope,
+    _class_scope: ClassScope, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (target, op, value) = match *stmt {
         Statement::AugAssign { ref target, ref op, ref value } =>
@@ -521,7 +526,7 @@ fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope, _class_scope:
     match *target {
         Expression::Name { ref id, .. } => {
             let local = Local::new();
-            let (ndx, offset) = scope.lookup_value(id)?;
+            let (ndx, offset, _) = scope.lookup_value(id)?;
 
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
             outfile.write_all(format!("let mut {} = cannoli_scope_list[{}]\
@@ -538,8 +543,8 @@ fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope, _class_scope:
 }
 
 fn output_stmt_ann_assign(_outfile: &mut File, _scope: TrackedScope,
-    _class_scope: Option<HashMap<String, usize>>, _indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+    _class_scope: ClassScope, _indent: usize, stmt: &Statement)
+    -> Result<(), CompilerError> {
     let (_target, _annotation, _value) = match *stmt {
         Statement::AnnAssign { ref target, ref annotation, ref value } =>
             (target, annotation, value),
@@ -668,7 +673,7 @@ fn output_stmt_import(outfile: &mut File, scope: TrackedScope, indent: usize,
             Some(ref alias) => alias,
             None => name
         };
-        let (ndx, offset) = scope.lookup_value(alias)?;
+        let (ndx, offset, _) = scope.lookup_value(alias)?;
 
         if BUILTIN_MODS.contains(&name[..]) {
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -1335,14 +1340,15 @@ fn output_expr_subscript(outfile: &mut File, scope: TrackedScope,
     Ok(local)
 }
 
-fn output_expr_name(outfile: &mut File, scope: TrackedScope, indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
+fn output_expr_name(outfile: &mut File, scope: TrackedScope, indent: usize,
+    expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (id, _ctx) = match *expr {
         Expression::Name { ref id, ref ctx } => (id, ctx),
         _ => unreachable!()
     };
     let local = Local::new();
-    let (ndx, offset) = scope.lookup_value(id)?;
+    let (ndx, offset, _) = scope.lookup_value(id)?;
 
     output.push_str(&INDENT.repeat(indent));
     output.push_str(&format!("let mut {} = cannoli_scope_list[{}].borrow()[{}]\
@@ -1425,7 +1431,7 @@ fn output_parameters(outfile: &mut File, scope: TrackedScope, indent: usize,
         let (arg_name, _arg_annotation) = match *arg {
             Arg::Arg { ref arg, ref annotation } => (arg, annotation)
         };
-        let (ndx, offset) = scope.lookup_value(arg_name)?;
+        let (ndx, offset, _) = scope.lookup_value(arg_name)?;
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
@@ -1481,14 +1487,14 @@ fn output_cmp_operator(op: &CmpOperator, val: &Local)
 /// class_scope will default to looking up the value in the current scope,
 /// this value is used when dealing with classes.
 fn unpack_values(outfile: &mut File, scope: TrackedScope, indent: usize,
-    class_scope: Option<HashMap<String, usize>>, packed_values: &Local,
-    target: &Expression) -> Result<(), CompilerError> {
+    class_scope: ClassScope, packed_values: &Local, target: &Expression)
+    -> Result<(), CompilerError> {
     match *target {
         Expression::Name { ref id, .. } => {
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
 
             if let Some(tbl) = class_scope {
-                let ndx = if let Some(ndx) = tbl.get(id) {
+                let ndx = if let Some(&(ref ndx, _)) = tbl.get(id) {
                     ndx
                 } else {
                     return Err(CompilerError::NameError(id.to_string()))
@@ -1498,7 +1504,7 @@ fn unpack_values(outfile: &mut File, scope: TrackedScope, indent: usize,
                     // id: '{}'\n", ndx, packed_values, id)
                     .as_bytes()).unwrap();
             } else {
-                let (ndx, offset) = scope.lookup_value(id)?;
+                let (ndx, offset, _) = scope.lookup_value(id)?;
                 outfile.write_all(format!("cannoli_scope_list[{}].borrow\
                     _mut()[{}] = {}; // id: '{}'\n", ndx, offset,
                     packed_values, id).as_bytes()).unwrap();

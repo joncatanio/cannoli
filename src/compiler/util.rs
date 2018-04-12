@@ -6,8 +6,11 @@ use super::errors::CompilerError;
 
 #[derive(Debug, Clone)]
 pub struct TrackedScope {
-    program_scope: Vec<HashMap<String, usize>>,
-    class_map: HashMap<String, HashMap<String, usize>>
+    // Vec<HashMap<identifier, (ndx, Option<type>)>>, might consider
+    // changing Option<String> to Option<Value>.
+    program_scope: Vec<HashMap<String, (usize, Option<String>)>>,
+    // HashMap<class_name, HashMap<member_name, (ndx, Option<type>)>>
+    class_map: HashMap<String, HashMap<String, (usize, Option<String>)>>
 }
 
 impl TrackedScope {
@@ -15,26 +18,28 @@ impl TrackedScope {
         TrackedScope { program_scope: Vec::new(), class_map: HashMap::new() }
     }
 
-    pub fn push_scope(&mut self, scope: HashMap<String, usize>) {
+    pub fn push_scope(&mut self, scope: HashMap<String,
+        (usize, Option<String>)>) {
         self.program_scope.push(scope)
     }
 
-    pub fn pop_scope(&mut self) -> Option<HashMap<String, usize>> {
+    pub fn pop_scope(&mut self) -> Option<HashMap<String,
+        (usize, Option<String>)>> {
         self.program_scope.pop()
     }
 
     pub fn insert_class(&mut self, class_name: &str, class_map:
-        HashMap<String, usize>) {
+        HashMap<String, (usize, Option<String>)>) {
         self.class_map.insert(class_name.to_string(), class_map);
     }
 
     /// Traverses the compiler's scope list to find a value. If the value is
     /// found a tuple (scope_position, value_offset) is returned.
     pub fn lookup_value(&self, id: &str)
-        -> Result<(usize, usize), CompilerError> {
+        -> Result<(usize, usize, Option<String>), CompilerError> {
         for (ndx, tbl) in self.program_scope.iter().enumerate().rev() {
-            if let Some(offset) = tbl.get(id) {
-                return Ok((ndx, *offset))
+            if let Some(&(ref offset, ref vtype)) = tbl.get(id) {
+                return Ok((ndx, *offset, vtype.clone()))
             }
         }
         Err(CompilerError::NameError(id.to_string()))
@@ -66,7 +71,7 @@ pub fn get_file_prefix(file: &str) -> Result<(String, String), CompilerError> {
 /// This function gathers id's that will be instantiated in the current scope
 /// and orders them for the compiler to use when looking up or assigning values
 pub fn gather_scope(stmts: &Vec<Statement>, start_ndx: usize, is_class: bool)
-    -> Result<HashMap<String, usize>, CompilerError> {
+    -> Result<HashMap<String, (usize, Option<String>)>, CompilerError> {
     let mut scope_set = HashSet::new();
     let mut scope_map = HashMap::new();
 
@@ -75,7 +80,7 @@ pub fn gather_scope(stmts: &Vec<Statement>, start_ndx: usize, is_class: bool)
     let end_ndx = start_ndx + scope_set.len();
     (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
         .for_each(|(ndx, key)| {
-            scope_map.insert(key, ndx);
+            scope_map.insert(key, (ndx, None));
         });
 
     Ok(scope_map)
@@ -141,7 +146,7 @@ fn rec_gather_scope(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
 }
 
 pub fn gather_func_params(params: &Arguments, start_ndx: usize)
-    -> Result<HashMap<String, usize>, CompilerError> {
+    -> Result<HashMap<String, (usize, Option<String>)>, CompilerError> {
     let mut scope_set = HashSet::new();
     let mut scope_map = HashMap::new();
     let (args, _vararg, _kwonlyargs, _kw_defaults, _kwarg, _defaults) =
@@ -162,14 +167,14 @@ pub fn gather_func_params(params: &Arguments, start_ndx: usize)
     let end_ndx = start_ndx + scope_set.len();
     (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
         .for_each(|(ndx, key)| {
-            scope_map.insert(key, ndx);
+            scope_map.insert(key, (ndx, None));
         });
 
     Ok(scope_map)
 }
 
 pub fn gather_comp_targets(generators: &Vec<Comprehension>, start_ndx: usize)
-    -> Result<HashMap<String, usize>, CompilerError> {
+    -> Result<HashMap<String, (usize, Option<String>)>, CompilerError> {
     let mut scope_set = HashSet::new();
     let mut scope_map = HashMap::new();
 
@@ -182,7 +187,7 @@ pub fn gather_comp_targets(generators: &Vec<Comprehension>, start_ndx: usize)
     let end_ndx = start_ndx + scope_set.len();
     (start_ndx..end_ndx).into_iter().zip(scope_set.into_iter())
         .for_each(|(ndx, key)| {
-            scope_map.insert(key, ndx);
+            scope_map.insert(key, (ndx, None));
         });
 
     Ok(scope_map)
