@@ -4,6 +4,43 @@ use std::collections::{HashMap, HashSet};
 use ::parser::ast::*;
 use super::errors::CompilerError;
 
+#[derive(Debug, Clone)]
+pub struct TrackedScope {
+    program_scope: Vec<HashMap<String, usize>>,
+    class_map: HashMap<String, HashMap<String, usize>>
+}
+
+impl TrackedScope {
+    pub fn new() -> TrackedScope {
+        TrackedScope { program_scope: Vec::new(), class_map: HashMap::new() }
+    }
+
+    pub fn push_scope(&mut self, scope: HashMap<String, usize>) {
+        self.program_scope.push(scope)
+    }
+
+    pub fn pop_scope(&mut self) -> Option<HashMap<String, usize>> {
+        self.program_scope.pop()
+    }
+
+    pub fn insert_class(&mut self, class_name: &str, class_map:
+        HashMap<String, usize>) {
+        self.class_map.insert(class_name.to_string(), class_map);
+    }
+
+    /// Traverses the compiler's scope list to find a value. If the value is
+    /// found a tuple (scope_position, value_offset) is returned.
+    pub fn lookup_value(&self, id: &str)
+        -> Result<(usize, usize), CompilerError> {
+        for (ndx, tbl) in self.program_scope.iter().enumerate().rev() {
+            if let Some(offset) = tbl.get(id) {
+                return Ok((ndx, *offset))
+            }
+        }
+        Err(CompilerError::NameError(id.to_string()))
+    }
+}
+
 /// Returns the root directory of the given file and the file name sans ext
 pub fn get_file_prefix(file: &str) -> Result<(String, String), CompilerError> {
     if let Some(caps) = FILENAME_RE.captures(&file) {
@@ -253,18 +290,6 @@ fn unpack_assign_alias(scope: &mut HashSet<String>, target: &Expression,
     }
 
     Ok(())
-}
-
-/// Traverses the compiler's scope list to find a value, if the value is found
-/// a tuple (scope_position, value_offset) is returned.
-pub fn lookup_value(scope: &Vec<HashMap<String, usize>>, id: &str)
-    -> Result<(usize, usize), CompilerError> {
-    for (ndx, tbl) in scope.iter().enumerate().rev() {
-        if let Some(offset) = tbl.get(id) {
-            return Ok((ndx, *offset))
-        }
-    }
-    Err(CompilerError::NameError(id.to_string()))
 }
 
 lazy_static! {
