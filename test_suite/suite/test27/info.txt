@@ -1,0 +1,1 @@
+annotated classes for class-vector optimization

@@ -502,7 +502,7 @@ fn output_stmt_assign(outfile: &mut File, scope: TrackedScope,
 
     for target in targets.iter() {
         unpack_values(outfile, scope.clone(), indent, class_scope.clone(),
-            &value_local, target)?;
+            &value_local, target, None)?;
     }
     Ok(())
 }
@@ -538,14 +538,22 @@ fn output_stmt_aug_assign(outfile: &mut File, scope: TrackedScope,
 }
 
 fn output_stmt_ann_assign(outfile: &mut File, scope: TrackedScope,
-    _class_scope: ClassScope, indent: usize, stmt: &Statement)
+    class_scope: ClassScope, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
-    let (_target, _annotation, value) = match *stmt {
-        Statement::AnnAssign { ref target, ref annotation, ref value } =>
-            (target, annotation, value),
+    let (target, annotation, value) = match *stmt {
+        Statement::AnnAssign { ref target, ref annotation, ref value } => {
+            let value = match *value {
+                Some(ref value) => value,
+                None => return Ok(())
+            };
+            (target, annotation, value)
+        },
         _ => unreachable!()
     };
     let value_local = output_expr(outfile, scope.clone(), indent, value)?;
+
+    unpack_values(outfile, scope.clone(), indent, class_scope.clone(),
+        &value_local, target, Some(annotation))?;
 
     Ok(())
 }
@@ -574,7 +582,7 @@ fn output_stmt_for(outfile: &mut File, scope: TrackedScope, indent: usize,
         iter_local).as_bytes()).unwrap();
 
     unpack_values(outfile, scope.clone(), indent + 1, None, &next_local,
-        target)?;
+        target, None)?;
     output_stmts(outfile, scope.clone(), None, indent + 1, body)?;
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -1045,7 +1053,7 @@ fn output_nested_listcomp(outfile: &mut File, scope: TrackedScope,
         {}.next() {{ val }} else {{ break }};\n", next_local,
         iter_local).as_bytes()).unwrap();
     unpack_values(outfile, scope.clone(), indent + 1, None, &next_local,
-        target)?;
+        target, None)?;
 
     let mut conds = vec![];
     for cond in ifs.iter() {
@@ -1483,9 +1491,9 @@ fn output_cmp_operator(op: &CmpOperator, val: &Local)
 /// Tail-recursive function that recursively unpacks values. Passing 'None' for
 /// class_scope will default to looking up the value in the current scope,
 /// this value is used when dealing with classes.
-fn unpack_values(outfile: &mut File, scope: TrackedScope, indent: usize,
-    class_scope: ClassScope, packed_values: &Local, target: &Expression)
-    -> Result<(), CompilerError> {
+fn unpack_values(outfile: &mut File, mut scope: TrackedScope, indent: usize,
+    class_scope: ClassScope, packed_values: &Local, target: &Expression,
+    annotation: Option<&Expression>) -> Result<(), CompilerError> {
     match *target {
         Expression::Name { ref id, .. } => {
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -1501,7 +1509,12 @@ fn unpack_values(outfile: &mut File, scope: TrackedScope, indent: usize,
                     // id: '{}'\n", ndx, packed_values, id)
                     .as_bytes()).unwrap();
             } else {
-                let (ndx, offset, _) = scope.lookup_value(id)?;
+                let (ndx, offset, _) = if let Some(ann) = annotation {
+                    scope.annotate(id, ann)?
+                } else {
+                    scope.lookup_value(id)?
+                };
+
                 outfile.write_all(format!("cannoli_scope_list[{}].borrow\
                     _mut()[{}] = {}; // id: '{}'\n", ndx, offset,
                     packed_values, id).as_bytes()).unwrap();
@@ -1533,7 +1546,7 @@ fn unpack_values(outfile: &mut File, scope: TrackedScope, indent: usize,
                             Integer({})));\n", local, packed_values, ndx)
                             .as_bytes()).unwrap();
                         unpack_values(outfile, scope.clone(), indent,
-                            class_scope.clone(), &local, elt)?;
+                            class_scope.clone(), &local, elt, annotation)?;
                     },
                     _ => unimplemented!()
                 }

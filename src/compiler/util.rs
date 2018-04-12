@@ -44,6 +44,29 @@ impl TrackedScope {
         }
         Err(CompilerError::NameError(id.to_string()))
     }
+
+    /// Similar to 'lookup_value' but annotates the value before returning it
+    pub fn annotate(&mut self, id: &str, annotation: &Expression)
+        -> Result<(usize, usize, Option<String>), CompilerError> {
+        // TODO support more complex annotations
+        let annotated_type = match *annotation {
+            Expression::Name { ref id, .. } => Some(id.to_string()),
+            _ => unimplemented!()
+        };
+
+        for (ndx, tbl) in self.program_scope.iter_mut().enumerate().rev() {
+            let offset = match tbl.get(id) {
+                Some(&(ref offset, _)) => Some(*offset),
+                None => None
+            };
+
+            if let Some(offset) = offset {
+                *tbl.get_mut(id).unwrap() = (offset, annotated_type.clone());
+                return Ok((ndx, offset, annotated_type))
+            }
+        }
+        Err(CompilerError::NameError(id.to_string()))
+    }
 }
 
 /// Returns the root directory of the given file and the file name sans ext
@@ -105,6 +128,9 @@ fn rec_gather_scope(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
                 for target in targets.iter() {
                     unpack_assign_targets(scope, target)?;
                 }
+            },
+            Statement::AnnAssign { ref target, .. } => {
+                unpack_assign_targets(scope, target)?;
             },
             Statement::For { ref target, iter: _, ref body, ref orelse } => {
                 unpack_assign_targets(scope, target)?;
@@ -231,6 +257,9 @@ fn rec_gather_class_init(scope: &mut HashSet<String>, stmts: &Vec<Statement>,
                 for target in targets.iter() {
                     unpack_assign_alias(scope, target, self_alias)?;
                 }
+            },
+            Statement::AnnAssign { ref target, .. } => {
+                unpack_assign_alias(scope, target, self_alias)?;
             },
             Statement::For { ref body, ref orelse, .. } => {
                 rec_gather_class_init(scope, body, self_alias)?;
