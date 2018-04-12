@@ -215,12 +215,15 @@ pub fn gather_func_params(params: &Arguments, start_ndx: usize)
     };
 
     for arg in args.iter() {
-        let arg_name = match *arg {
-            Arg::Arg { ref arg, .. } => arg
+        let (arg_name, annotation) = match *arg {
+            Arg::Arg { ref arg, ref annotation } => (arg, annotation)
         };
 
-        // TODO update this to insert the annotation
-        scope_map.insert(arg_name.to_string(), None);
+        if let &Some(Expression::Name { ref id, .. }) = annotation {
+            scope_map.insert(arg_name.to_string(), Some(id.to_string()));
+        } else {
+            scope_map.insert(arg_name.to_string(), None);
+        }
     }
 
     let end_ndx = start_ndx + scope_map.len();

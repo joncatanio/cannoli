@@ -352,6 +352,7 @@ fn output_stmt_funcdef(outfile: &mut File, scope: &mut TrackedScope,
 
     let capacity = current_scope.len();
     scope.push_scope(current_scope);
+    println!("SCOPE: {:?}", scope);
 
     // Setup function signature and append to the scope list
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
