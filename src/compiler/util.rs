@@ -34,7 +34,7 @@ impl TrackedScope {
     }
 
     /// Traverses the compiler's scope list to find a value. If the value is
-    /// found a tuple (scope_position, value_offset) is returned.
+    /// found a tuple (scope_position, value_offset, type) is returned.
     pub fn lookup_value(&self, id: &str)
         -> Result<(usize, usize, Option<String>), CompilerError> {
         for (ndx, tbl) in self.program_scope.iter().enumerate().rev() {
@@ -43,6 +43,38 @@ impl TrackedScope {
             }
         }
         Err(CompilerError::NameError(id.to_string()))
+    }
+
+    /// Same as 'lookup_value' but takes an Expression and returns an option
+    /// in case it can't figure out the expression mapping
+    pub fn lookup_expr(&self, expr: &Expression)
+        -> Option<(usize, usize, Option<String>)> {
+        let id = match *expr {
+            Expression::Name { ref id, .. } => id,
+            _ => return None
+        };
+
+        for (ndx, tbl) in self.program_scope.iter().enumerate().rev() {
+            if let Some(&(ref offset, ref vtype)) = tbl.get(id) {
+                return Some((ndx, *offset, vtype.clone()))
+            }
+        }
+        None
+    }
+
+    /// Lookups up an attribute index for a given class
+    pub fn lookup_attr(&self, class_name: &str, attr: &str)
+        -> Result<usize, CompilerError> {
+        let class_tbl = match self.class_map.get(class_name) {
+            Some(tbl) => tbl,
+            None => return Err(CompilerError::NameError(class_name.to_string()))
+        };
+
+        match class_tbl.get(attr) {
+            Some(&(ref offset, _)) => Ok(*offset),
+            None => return Err(CompilerError::AttributeError(
+                class_name.to_string(), attr.to_string()))
+        }
     }
 
     /// Similar to 'lookup_value' but annotates the value before returning it

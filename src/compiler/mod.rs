@@ -1530,9 +1530,30 @@ fn unpack_values(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
         Expression::Attribute { ref value, ref attr, .. } => {
             let base_local = output_expr(outfile, scope,
                 indent, value)?;
+
             outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-            outfile.write_all(format!("cannolib::attr_assign({}, \"{}\", {}\
-                );\n", base_local, attr, packed_values).as_bytes()).unwrap();
+            // This looks up the expression to see if there is has been a
+            // type associated with it, if so it will try to optimize the
+            // attribute assignment by accessing the object vec directly.
+            if let Some((_, _, Some(vtype))) = scope.lookup_expr(value) {
+                let ndx = scope.lookup_attr(&vtype, attr)?;
+
+                outfile.write_all(format!("match {} {{\n", base_local)
+                    .as_bytes()).unwrap();
+                outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+                outfile.write_all(format!("cannolib::Value::Object {{ members, \
+                    .. }} => members.borrow_mut()[{}] = {},\n", ndx,
+                    packed_values).as_bytes()).unwrap();
+                outfile.write(INDENT.repeat(indent + 1).as_bytes()).unwrap();
+                outfile.write_all("_ => panic!(\"bad annotation\")\n"
+                    .as_bytes()).unwrap();
+                outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
+                outfile.write_all("}\n".as_bytes()).unwrap();
+            } else {
+                outfile.write_all(format!("cannolib::attr_assign({}, \"{}\", \
+                    {});\n", base_local, attr, packed_values).as_bytes())
+                    .unwrap();
+            }
         },
         Expression::List { .. } => {
             unimplemented!()

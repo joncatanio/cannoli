@@ -24,3 +24,6 @@ func(a, c)
 print(a.x, a.y)
 print(b.x, b.y)
 print(c.x, c.y)
+
+b.x = 499
+print(c.x, c.y)
