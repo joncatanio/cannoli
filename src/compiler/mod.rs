@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::iter::Peekable;
 use std::slice::Iter;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use clap::ArgMatches;
 use cannolib;
 
@@ -17,10 +17,9 @@ use super::parser::ast::*;
 use self::errors::CompilerError;
 use self::local::Local;
 use self::util::TrackedScope;
+use self::util::Scope;
 
 const INDENT: &str = "    ";
-
-type ClassScope = Option<HashMap<String, (usize, Option<String>)>>;
 
 // Needed global mutable variables that could represent compilation state, I
 // didn't want to do it this way but have no time for a refactor.
@@ -176,15 +175,16 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     // used in this compiler to output a more efficient scoping system.
     let mut scope = TrackedScope::new();
     scope.push_scope(cannolib::builtin::get_mapping());
-    let mut current_scope = util::gather_scope(body, 0, false)?;
 
     // Insert meta data into the scope on the compiler side, this is also
     // setup below to be used at runtime. Then appened the updated scope.
+    let mut current_scope = util::gather_scope(body, 0, false)?;
     let offset = current_scope.len();
     current_scope.insert("__name__".to_string(), (offset, None));
 
     let capacity = current_scope.len();
     scope.push_scope(current_scope);
+    scope.push_class_scope(util::gather_classdefs(body)?);
 
     outfile.write(INDENT.repeat(1).as_bytes()).unwrap();
     outfile.write_all("pub fn execute() {\n".as_bytes()).unwrap();
@@ -225,6 +225,7 @@ fn output_main(outfile: &mut File, ast: &Ast) -> Result<(), CompilerError> {
     // Pop the main scope and the built-ins, this is to just stay consistent
     scope.pop_scope();
     scope.pop_scope();
+    scope.pop_class_scope();
     Ok(())
 }
 
@@ -287,7 +288,7 @@ fn output_module(outfile: &mut File, module: &str, ast: &Ast)
 }
 
 fn output_stmts(outfile: &mut File, scope: &mut TrackedScope,
-    class_scope: ClassScope, indent: usize, stmts: &Vec<Statement>)
+    class_scope: Option<Scope>, indent: usize, stmts: &Vec<Statement>)
     -> Result<(), CompilerError> {
     for stmt in stmts.iter() {
         output_stmt(outfile, scope, class_scope.clone(), indent, stmt)?;
@@ -296,7 +297,7 @@ fn output_stmts(outfile: &mut File, scope: &mut TrackedScope,
 }
 
 fn output_stmt(outfile: &mut File, scope: &mut TrackedScope,
-    class_scope: ClassScope, indent: usize, stmt: &Statement)
+    class_scope: Option<Scope>, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     match *stmt {
         Statement::FunctionDef { .. } => output_stmt_funcdef(outfile,
@@ -337,7 +338,7 @@ fn output_stmt(outfile: &mut File, scope: &mut TrackedScope,
 }
 
 fn output_stmt_funcdef(outfile: &mut File, scope: &mut TrackedScope,
-    class_scope: ClassScope, indent: usize, stmt: &Statement)
+    class_scope: Option<Scope>, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (name, args, body, _decorator_list, _returns) = match *stmt {
         Statement::FunctionDef { ref name, ref args, ref body,
@@ -352,6 +353,7 @@ fn output_stmt_funcdef(outfile: &mut File, scope: &mut TrackedScope,
 
     let capacity = current_scope.len();
     scope.push_scope(current_scope);
+    scope.push_class_scope(util::gather_classdefs(body)?);
 
     // Setup function signature and append to the scope list
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -413,6 +415,7 @@ fn output_stmt_funcdef(outfile: &mut File, scope: &mut TrackedScope,
     }
 
     scope.pop_scope();
+    scope.pop_class_scope();
     outfile.flush().unwrap();
     Ok(())
 }
@@ -425,12 +428,7 @@ fn output_stmt_classdef(outfile: &mut File, scope: &mut TrackedScope,
             decorator_list),
         _ => unreachable!()
     };
-    let mut class_tbl = util::gather_scope(body, 0, true)?;
-    let offset = class_tbl.len();
-    class_tbl.insert("__name__".to_string(), (offset, None));
-
-    // Add the class to the scope class map
-    scope.insert_class(name, class_tbl.clone());
+    let class_tbl = scope.lookup_class(name)?;
 
     // Setup the HashMap that maps the offsets in the object vector
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
@@ -497,7 +495,7 @@ fn output_stmt_return(outfile: &mut File, scope: &mut TrackedScope,
 }
 
 fn output_stmt_assign(outfile: &mut File, scope: &mut TrackedScope,
-    class_scope: ClassScope, indent: usize, stmt: &Statement)
+    class_scope: Option<Scope>, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (targets, value) = match *stmt {
         Statement::Assign { ref targets, ref value } => (targets, value),
@@ -514,7 +512,7 @@ fn output_stmt_assign(outfile: &mut File, scope: &mut TrackedScope,
 
 // TODO ignores class_scope for now, I don't know if it even works in Python.
 fn output_stmt_aug_assign(outfile: &mut File, scope: &mut TrackedScope,
-    _class_scope: ClassScope, indent: usize, stmt: &Statement)
+    _class_scope: Option<Scope>, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (target, op, value) = match *stmt {
         Statement::AugAssign { ref target, ref op, ref value } =>
@@ -543,7 +541,7 @@ fn output_stmt_aug_assign(outfile: &mut File, scope: &mut TrackedScope,
 }
 
 fn output_stmt_ann_assign(outfile: &mut File, scope: &mut TrackedScope,
-    class_scope: ClassScope, indent: usize, stmt: &Statement)
+    class_scope: Option<Scope>, indent: usize, stmt: &Statement)
     -> Result<(), CompilerError> {
     let (target, annotation, value) = match *stmt {
         Statement::AnnAssign { ref target, ref annotation, ref value } => {
@@ -668,8 +666,8 @@ fn output_stmt_if(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     Ok(())
 }
 
-fn output_stmt_import(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
-    stmt: &Statement) -> Result<(), CompilerError> {
+fn output_stmt_import(outfile: &mut File, scope: &mut TrackedScope,
+    indent: usize, stmt: &Statement) -> Result<(), CompilerError> {
     let names = match *stmt {
         Statement::Import { ref names } => names,
         _ => unreachable!()
@@ -840,8 +838,8 @@ fn output_expr(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     }
 }
 
-fn output_expr_boolop(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
-    expr: &Expression) -> Result<Local, CompilerError> {
+fn output_expr_boolop(outfile: &mut File, scope: &mut TrackedScope,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let (op, values) = match *expr {
         Expression::BoolOp { ref op, ref values } => (op, values),
         _ => unreachable!()
@@ -876,8 +874,8 @@ fn output_expr_boolop(outfile: &mut File, scope: &mut TrackedScope, indent: usiz
 /// Recursively outputs if-expressions that mirror short-circuiting
 /// functionality, this has to be done due to how expressions are being written
 /// out. It's certainly not ideal but must be done.
-fn rec_output_bool_op(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
-    op: &BoolOperator, last: &Local, mut iter: Iter<Expression>)
+fn rec_output_bool_op(outfile: &mut File, scope: &mut TrackedScope,
+    indent: usize, op: &BoolOperator, last: &Local, mut iter: Iter<Expression>)
     -> Result<(), CompilerError> {
     let expr = match iter.next() {
         Some(expr) => expr,
@@ -911,8 +909,8 @@ fn rec_output_bool_op(outfile: &mut File, scope: &mut TrackedScope, indent: usiz
     Ok(())
 }
 
-fn output_expr_binop(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
-    expr: &Expression) -> Result<Local, CompilerError> {
+fn output_expr_binop(outfile: &mut File, scope: &mut TrackedScope,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (left, op, right) = match *expr {
         Expression::BinOp { ref left, ref op, ref right } => (left, op, right),
@@ -930,8 +928,8 @@ fn output_expr_binop(outfile: &mut File, scope: &mut TrackedScope, indent: usize
     Ok(local)
 }
 
-fn output_expr_unaryop(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
-    expr: &Expression) -> Result<Local, CompilerError> {
+fn output_expr_unaryop(outfile: &mut File, scope: &mut TrackedScope,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (op, operand) = match *expr {
         Expression::UnaryOp { ref op, ref operand } => (op, operand),
@@ -1414,8 +1412,8 @@ fn output_expr_list(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
     Ok(local)
 }
 
-fn output_expr_tuple(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
-    expr: &Expression) -> Result<Local, CompilerError> {
+fn output_expr_tuple(outfile: &mut File, scope: &mut TrackedScope,
+    indent: usize, expr: &Expression) -> Result<Local, CompilerError> {
     let mut output = String::new();
     let (elts, _ctx) = match *expr {
         Expression::Tuple { ref elts, ref ctx } => (elts, ctx),
@@ -1442,8 +1440,8 @@ fn output_expr_tuple(outfile: &mut File, scope: &mut TrackedScope, indent: usize
     Ok(local)
 }
 
-fn output_parameters(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
-    params: &Arguments) -> Result<(), CompilerError> {
+fn output_parameters(outfile: &mut File, scope: &mut TrackedScope,
+    indent: usize, params: &Arguments) -> Result<(), CompilerError> {
     let (args, _vararg, _kwonlyargs, _kw_defaults, _kwarg, _defaults) =
     match *params {
         Arguments::Arguments { ref args, ref vararg, ref kwonlyargs,
@@ -1514,7 +1512,7 @@ fn output_cmp_operator(op: &CmpOperator, val: &Local)
 /// class_scope will default to looking up the value in the current scope,
 /// this value is used when dealing with classes.
 fn unpack_values(outfile: &mut File, scope: &mut TrackedScope, indent: usize,
-    class_scope: ClassScope, packed_values: &Local, target: &Expression,
+    class_scope: Option<Scope>, packed_values: &Local, target: &Expression,
     annotation: Option<&Expression>) -> Result<(), CompilerError> {
     match *target {
         Expression::Name { ref id, .. } => {

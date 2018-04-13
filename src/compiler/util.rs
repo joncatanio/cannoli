@@ -4,33 +4,58 @@ use std::collections::HashMap;
 use ::parser::ast::*;
 use super::errors::CompilerError;
 
+pub type Scope = HashMap<String, (usize, Option<String>)>;
+type ClassScope = HashMap<String, Scope>;
+
+/// Returns the root directory of the given file and the file name sans ext
+pub fn get_file_prefix(file: &str) -> Result<(String, String), CompilerError> {
+    if let Some(caps) = FILENAME_RE.captures(&file) {
+        match (caps.at(1), caps.at(2)) {
+            (Some(src_root), Some(module)) => {
+                Ok((src_root.to_string(), module.to_string()))
+            },
+            (None, Some(module)) => {
+                Ok(("./".to_string(), module.to_string()))
+            },
+            (Some(_), None) | (None, None) => {
+                return Err(CompilerError::IOError(format!("'{}' not found",
+                    file)))
+            }
+        }
+    } else {
+        return Err(CompilerError::IOError(format!("unsupported filetype for \
+            file: {}", file)))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TrackedScope {
     // Vec<HashMap<identifier, (ndx, Option<type>)>>, might consider
     // changing Option<String> to Option<Value>.
-    program_scope: Vec<HashMap<String, (usize, Option<String>)>>,
-    // HashMap<class_name, HashMap<member_name, (ndx, Option<type>)>>
-    class_map: HashMap<String, HashMap<String, (usize, Option<String>)>>
+    program_scope: Vec<Scope>,
+    // Vec<HashMap<class_name, HashMap<member_name, (ndx, Option<type>)>>>
+    class_scope: Vec<ClassScope>
 }
 
 impl TrackedScope {
     pub fn new() -> TrackedScope {
-        TrackedScope { program_scope: Vec::new(), class_map: HashMap::new() }
+        TrackedScope { program_scope: Vec::new(), class_scope: Vec::new() }
     }
 
-    pub fn push_scope(&mut self, scope: HashMap<String,
-        (usize, Option<String>)>) {
+    pub fn push_scope(&mut self, scope: Scope) {
         self.program_scope.push(scope)
     }
 
-    pub fn pop_scope(&mut self) -> Option<HashMap<String,
-        (usize, Option<String>)>> {
+    pub fn pop_scope(&mut self) -> Option<Scope> {
         self.program_scope.pop()
     }
 
-    pub fn insert_class(&mut self, class_name: &str, class_map:
-        HashMap<String, (usize, Option<String>)>) {
-        self.class_map.insert(class_name.to_string(), class_map);
+    pub fn push_class_scope(&mut self, classes: ClassScope) {
+        self.class_scope.push(classes);
+    }
+
+    pub fn pop_class_scope(&mut self) -> Option<ClassScope>{
+        self.class_scope.pop()
     }
 
     /// Traverses the compiler's scope list to find a value. If the value is
@@ -43,6 +68,17 @@ impl TrackedScope {
             }
         }
         Err(CompilerError::NameError(id.to_string()))
+    }
+
+    /// Looks up a class in the class_scope and returns the scope of the class
+    pub fn lookup_class(&self, class_name: &str) ->
+        Result<Scope, CompilerError> {
+        for tbl in self.class_scope.iter().rev() {
+            if let Some(scope) = tbl.get(class_name) {
+                return Ok(scope.clone())
+            }
+        }
+        Err(CompilerError::NameError(class_name.to_string()))
     }
 
     /// Same as 'lookup_value' but takes an Expression and returns an option
@@ -65,16 +101,19 @@ impl TrackedScope {
     /// Lookups up an attribute index for a given class
     pub fn lookup_attr(&self, class_name: &str, attr: &str)
         -> Result<usize, CompilerError> {
-        let class_tbl = match self.class_map.get(class_name) {
-            Some(tbl) => tbl,
-            None => return Err(CompilerError::NameError(class_name.to_string()))
-        };
+        for tbl in self.class_scope.iter().rev() {
+            let class_tbl = match tbl.get(class_name) {
+                Some(class_tbl) => class_tbl,
+                None => continue
+            };
 
-        match class_tbl.get(attr) {
-            Some(&(ref offset, _)) => Ok(*offset),
-            None => return Err(CompilerError::AttributeError(
-                class_name.to_string(), attr.to_string()))
+            match class_tbl.get(attr) {
+                Some(&(ref offset, _)) => return Ok(*offset),
+                None => continue
+            }
         }
+        Err(CompilerError::AttributeError(
+            class_name.to_string(), attr.to_string()))
     }
 
     /// Similar to 'lookup_value' but annotates the value before returning it
@@ -101,32 +140,11 @@ impl TrackedScope {
     }
 }
 
-/// Returns the root directory of the given file and the file name sans ext
-pub fn get_file_prefix(file: &str) -> Result<(String, String), CompilerError> {
-    if let Some(caps) = FILENAME_RE.captures(&file) {
-        match (caps.at(1), caps.at(2)) {
-            (Some(src_root), Some(module)) => {
-                Ok((src_root.to_string(), module.to_string()))
-            },
-            (None, Some(module)) => {
-                Ok(("./".to_string(), module.to_string()))
-            },
-            (Some(_), None) | (None, None) => {
-                return Err(CompilerError::IOError(format!("'{}' not found",
-                    file)))
-            }
-        }
-    } else {
-        return Err(CompilerError::IOError(format!("unsupported filetype for \
-            file: {}", file)))
-    }
-}
-
 // Scope gathering helper functions
 /// This function gathers id's that will be instantiated in the current scope
 /// and orders them for the compiler to use when looking up or assigning values
 pub fn gather_scope(stmts: &Vec<Statement>, start_ndx: usize, is_class: bool)
-    -> Result<HashMap<String, (usize, Option<String>)>, CompilerError> {
+    -> Result<Scope, CompilerError> {
     let mut scope_map = HashMap::new();
     let mut map = HashMap::new();
 
@@ -203,8 +221,28 @@ fn rec_gather_scope(scope: &mut HashMap<String, Option<String>>,
     Ok(())
 }
 
+pub fn gather_classdefs(stmts: &Vec<Statement>)
+    -> Result<ClassScope, CompilerError> {
+    let mut classes = HashMap::new();
+
+    for stmt in stmts.iter() {
+        match *stmt {
+            Statement::ClassDef { ref name, ref body, .. } => {
+                let mut class_tbl = gather_scope(body, 0, true)?;
+                let offset = class_tbl.len();
+
+                class_tbl.insert("__name__".to_string(), (offset, None));
+                classes.insert(name.to_string(), class_tbl);
+            },
+            _ => ()
+        }
+    }
+
+    Ok(classes)
+}
+
 pub fn gather_func_params(params: &Arguments, start_ndx: usize)
-    -> Result<HashMap<String, (usize, Option<String>)>, CompilerError> {
+    -> Result<Scope, CompilerError> {
     let mut scope_map = HashMap::new();
     let mut map = HashMap::new();
     let (args, _vararg, _kwonlyargs, _kw_defaults, _kwarg, _defaults) =
@@ -236,7 +274,7 @@ pub fn gather_func_params(params: &Arguments, start_ndx: usize)
 }
 
 pub fn gather_comp_targets(generators: &Vec<Comprehension>, start_ndx: usize)
-    -> Result<HashMap<String, (usize, Option<String>)>, CompilerError> {
+    -> Result<Scope, CompilerError> {
     let mut scope_map = HashMap::new();
     let mut map = HashMap::new();
 
