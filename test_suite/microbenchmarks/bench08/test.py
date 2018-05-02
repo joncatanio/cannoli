@@ -1,5 +1,6 @@
 class Example:
    def __init__(self):
+      self.num = 0
       self.x = "This obj"
 
    def method(self, num):
