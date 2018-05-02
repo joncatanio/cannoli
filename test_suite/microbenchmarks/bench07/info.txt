@@ -1,1 +1,1 @@
-Microbenchmarks: creating 10 million objects
+Microbenchmark: creating 10 million objects

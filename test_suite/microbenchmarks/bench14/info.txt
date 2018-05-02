@@ -1,0 +1,1 @@
+Microbenchmark: accessing annotated object 10 million times

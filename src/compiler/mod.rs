@@ -267,7 +267,8 @@ fn output_stmt(outfile: &mut File, class_scope: bool, indent: usize,
             class_scope, indent, stmt),
         Statement::AugAssign { .. } => output_stmt_aug_assign(outfile,
             class_scope, indent, stmt),
-        Statement::AnnAssign { .. } => unimplemented!(),
+        Statement::AnnAssign { .. } => output_stmt_ann_assign(outfile,
+            class_scope, indent, stmt),
         Statement::For { .. } => output_stmt_for(outfile, indent, stmt),
         Statement::While { .. } => output_stmt_while(outfile, indent, stmt),
         Statement::If { .. }    => output_stmt_if(outfile, indent, stmt),
@@ -454,6 +455,32 @@ fn output_stmt_aug_assign(outfile: &mut File, class_scope: bool, indent: usize,
         },
         _ => panic!("illegal expression for augmented assignment")
     }
+    Ok(())
+}
+
+fn output_stmt_ann_assign(outfile: &mut File, class_scope: bool, indent: usize,
+    stmt: &Statement) -> Result<(), CompilerError> {
+    let (target, _annotation, value) = match *stmt {
+        Statement::AnnAssign { ref target, ref annotation, ref value } => {
+            let value = match *value {
+                Some(ref value) => value,
+                None => return Ok(())
+            };
+            (target, annotation, value)
+        },
+        _ => unreachable!()
+    };
+    let mut prefix = String::new();
+
+    if class_scope {
+        prefix.push_str("cannoli_object_tbl");
+    } else {
+        prefix.push_str("cannoli_scope_list.last_mut().unwrap().borrow_mut()");
+    }
+
+    let value_local = output_expr(outfile, indent, value)?;
+    unpack_values(outfile, indent, Some(&prefix), &value_local, target)?;
+
     Ok(())
 }
 
