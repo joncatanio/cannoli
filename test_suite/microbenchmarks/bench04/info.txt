@@ -1,1 +1,1 @@
-Microbenchmark: print local variable 10,000,000 times
+Microbenchmark: print local variable 10 million times

@@ -1,1 +1,1 @@
-Microbenchmark: reversing list 1 million times with slices
+Microbenchmark: reversing list of 100 elements 1 million times with slices
