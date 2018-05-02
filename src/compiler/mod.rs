@@ -281,7 +281,7 @@ fn output_stmt(outfile: &mut File, class_scope: bool, indent: usize,
         Statement::Global { .. } => unimplemented!(),
         Statement::Nonlocal { .. } => unimplemented!(),
         Statement::Expr { .. }  => output_stmt_expr(outfile, indent, stmt),
-        Statement::Pass => unimplemented!(),
+        Statement::Pass => Ok(()),
         Statement::Break => unimplemented!(),
         Statement::Continue => unimplemented!()
     }
