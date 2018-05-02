@@ -1,0 +1,1 @@
+Microbenchmark: calling object method 10 million times
