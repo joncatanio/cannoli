@@ -22,7 +22,7 @@ run_test() {
    $PYTHON "$f"/test.py > "$f"/expected.out
 
    ./$EXECUTABLE "$f"/test.py > /dev/null
-   mv "$f"/main.rs "$f"/cannoli_mods.rs $RUST_CRATE/src/
+   mv "$f"/main.rs $RUST_CRATE/src/
    cd $RUST_CRATE
    cargo build --release 2>/dev/null
    STATUS=$?
