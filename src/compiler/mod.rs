@@ -47,6 +47,7 @@ pub fn compile(file: &str, opt_args: Option<&ArgMatches>)
     let (src_root, module) = util::get_file_prefix(file)?;
     *SRC_ROOT.lock().unwrap() = src_root;
 
+    // Output all modules to 'main.rs'
     let mut filename = "main.rs".to_string();
     filename.insert_str(0, &*SRC_ROOT.lock().unwrap());
 
@@ -61,27 +62,7 @@ pub fn compile(file: &str, opt_args: Option<&ArgMatches>)
         result.unwrap()
     };
 
-    // Write out the simple 'main.rs' file contents
-    outfile.write_all(format!("extern crate cannolib;\nmod cannoli_mods;\n\n\
-        fn main() {{\n{}cannoli_mods::main::execute()\n}}", INDENT)
-        .as_bytes()).unwrap();
-
-    // Output all modules to 'cannoli_mods.rs'
-    let mut filename = "cannoli_mods.rs".to_string();
-    filename.insert_str(0, &*SRC_ROOT.lock().unwrap());
-
-    let result = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open(filename);
-    let mut outfile = if result.is_err() {
-        return Err(CompilerError::IOError(format!("{:?}", result)));
-    } else {
-        result.unwrap()
-    };
-
-    output_file_headers(&mut outfile)?;
+    output_main_headers(&mut outfile)?;
 
     let mut is_main = true;
     queue_module(&module);
@@ -144,8 +125,10 @@ fn queue_module(module: &str) {
     }
 }
 
-fn output_file_headers(outfile: &mut File) -> Result<(), CompilerError> {
-    outfile.write("extern crate cannolib;\n".as_bytes()).unwrap();
+fn output_main_headers(outfile: &mut File) -> Result<(), CompilerError> {
+    outfile.write_all(format!("extern crate cannolib;\n\n\
+        fn main() {{\n{}main::execute()\n}}\n\n", INDENT)
+        .as_bytes()).unwrap();
 
     Ok(())
 }
@@ -694,7 +677,7 @@ fn output_stmt_import(outfile: &mut File, scope: &mut TrackedScope,
         queue_module(name);
 
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-        outfile.write(format!("use cannoli_mods::{};\n", name)
+        outfile.write(format!("use {};\n", name)
             .as_bytes()).unwrap();
         outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
         outfile.write(format!("cannoli_scope_list[{}].borrow_mut()[{}] = \
@@ -738,7 +721,7 @@ fn output_stmt_import_from(outfile: &mut File, _scope: &mut TrackedScope,
     queue_module(mod_name);
 
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
-    outfile.write(format!("use cannoli_mods::{};\n", mod_name)
+    outfile.write(format!("use {};\n", mod_name)
         .as_bytes()).unwrap();
     outfile.write(INDENT.repeat(indent).as_bytes()).unwrap();
     outfile.write(format!("cannoli_scope_list.last_mut().unwrap()\
