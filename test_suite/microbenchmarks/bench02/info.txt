@@ -1,0 +1,1 @@
+Microbenchmark: calling empty function 1 million times

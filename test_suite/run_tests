@@ -39,7 +39,7 @@ run_test() {
       return
    fi
 
-   mv "$f"/main.rs "$f"/cannoli_mods.rs $RUST_CRATE/src/
+   mv "$f"/main.rs $RUST_CRATE/src/
    cd $RUST_CRATE
    cargo build --release 2>/dev/null
    STATUS=$?
@@ -87,3 +87,4 @@ if [[ -z "$1" ]]; then
 else
    run_test "$TEST_DIR/$1"
 fi
+

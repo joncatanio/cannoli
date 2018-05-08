@@ -1,0 +1,1 @@
+Microbenchmark: 26 nested scope elements accessed 1 million times
