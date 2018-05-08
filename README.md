@@ -16,8 +16,8 @@ More information on the results and implementation details of Cannoli can be fou
 :point_right: _[Leave the Features: Take the Cannoli]()_ - Jonathan Catanio
 
 ### How to Run
-- Install Rust by following the instructions on their official [installation guide](https://www.rust-lang.org/en-US/install.html). Cannoli is both compiled with and outputs Rust 1.24.0. Changing versions with the Rust toolchain can be done with the `rustup` utility.
-- Build the project by running `cargo build` or `cargo build --release` in the projects root directory. This will create a `target` directory with `debug` or `release` subdirectories containing the executable.
+- Install Rust by following the instructions on their official [installation guide](https://www.rust-lang.org/en-US/install.html). Cannoli is both compiled with Rust 1.24.0 and outputs Rust 1.24.0 code. Changing versions with the Rust toolchain can be done with the `rustup` utility.
+- Build the project by running `cargo build` or `cargo build --release` in the project's root directory. This will create a `target` directory with `debug` or `release` subdirectories containing the executable.
 - Compile a Python file by executing the command `./target/release/cannoli [src.py]`
 
 ### Executing the Compiled Python
