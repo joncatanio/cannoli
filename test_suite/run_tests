@@ -87,3 +87,4 @@ if [[ -z "$1" ]]; then
 else
    run_test "$TEST_DIR/$1"
 fi
+
