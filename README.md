@@ -2,7 +2,7 @@
 ![](resources/logo/cannoli_logo_212x118.png)
 
 Cannoli is a compiler for a subset of Python 3.6.5 and is designed to evaluate the
-language features of Python that negatively impact performance. Cannoli is written in [Rust](https://www.rust-lang.org/) and also compiles Python to Rust. The use of Rust as the intermediate representation was chosen for performance purposes and to avoid writing a garbage collector. Cannoli was developed as work for a Master's Thesis as [Cal Poly - San Luis Obispo](https://www.calpoly.edu/).
+language features of Python that negatively impact performance. Cannoli is written in [Rust](https://www.rust-lang.org/) and also compiles Python to Rust. The use of Rust as the intermediate representation was chosen for performance purposes and to avoid writing a garbage collector. Cannoli was developed as work for a Master's Thesis at [Cal Poly - San Luis Obispo](https://www.calpoly.edu/).
 
 ### Python Support
 Cannoli supports a subset of Python 3.6.5, it's current state omits many features that could not be completed during the duration of the thesis. The main omissions are exceptions and inheritance. Standard library support is also incomplete but covers numerous proofs-of-concepts that could be applied to other types and modules (see [Cannolib](#cannolib)).
