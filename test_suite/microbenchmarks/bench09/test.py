@@ -1,10 +1,13 @@
-lst = []
-i = 0
-while i < 100:
-   i += 1
-   lst.append(i)
+class Example:
+   def __init__(self):
+      self.num = 0
+      self.x = "This obj"
 
+   def method(self, num):
+      self.num = num
+
+obj = Example()
 i = 0
-while i < 1000000:
+while i < 10000000:
    i += 1
-   new_lst = [x for x in lst]
+   obj.method(i)

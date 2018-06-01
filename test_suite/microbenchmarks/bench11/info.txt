@@ -1,1 +1,1 @@
-Microbenchmark: alternating conditionals 10 million times
+Microbenchmark: reversing list of 100 elements 1 million times with slices

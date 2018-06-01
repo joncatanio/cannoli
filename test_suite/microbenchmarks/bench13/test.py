@@ -1,13 +1,5 @@
-class Example:
-   def __init__(self):
-      self.x = 1
-
-def func(obj):
-   obj.x
-
-obj = Example()
-
+lst = ["this", "is", "a", "list"]
 i = 0
 while i < 10000000:
    i += 1
-   func(obj)
+   lst[2]

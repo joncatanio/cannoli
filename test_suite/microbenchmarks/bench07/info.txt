@@ -1,1 +1,1 @@
-Microbenchmark: creating 10 million objects
+Microbenchmark: cloning list via slice 10 million times
