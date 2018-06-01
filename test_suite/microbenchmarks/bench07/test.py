@@ -1,8 +1,11 @@
-class Example:
-   def __init__(self, x):
-      self.x = x
+lst = []
+i = 0
+
+while i < 1000:
+   i += 1
+   lst.append(i)
 
 i = 0
-while i < 10000000:
+while i < 1000000:
    i += 1
-   obj = Example(i)
+   copy = lst[::]

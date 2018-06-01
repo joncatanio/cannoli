@@ -2,7 +2,7 @@ class Example:
    def __init__(self):
       self.x = 1
 
-def func(obj):
+def func(obj : Example):
    obj.x
 
 obj = Example()
