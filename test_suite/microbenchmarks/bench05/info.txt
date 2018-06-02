@@ -1,1 +1,1 @@
-Microbenchmark: pushing and popping 10 million list items
+Microbenchmark: print local variable 10 million times w/o newline

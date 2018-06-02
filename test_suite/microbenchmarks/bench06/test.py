@@ -1,11 +1,8 @@
 lst = []
 i = 0
-
-while i < 1000:
-   i += 1
+while i < 10000000:
    lst.append(i)
-
-i = 0
-while i < 1000000:
    i += 1
-   copy = lst[::]
+
+while lst:
+   lst.pop()

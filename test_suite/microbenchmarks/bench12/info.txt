@@ -1,1 +1,1 @@
-Microbenchmark: Indexing list 10 million times
+Microbenchmark: alternating conditionals 10 million times
