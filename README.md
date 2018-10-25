@@ -13,7 +13,7 @@ Cannoli supports two major optimizations that come as a result of applying restr
 ### Thesis Paper
 More information on the results and implementation details of Cannoli can be found in the thesis paper.
 
-:point_right: _[Leave the Features: Take the Cannoli](resources/papers/cannoli-thesis-paper.pdf)_ - Jonathan Catanio
+:point_right: _[Leave the Features: Take the Cannoli](https://digitalcommons.calpoly.edu/theses/1886/)_ - Jonathan Catanio
 
 ### How to Run
 - Install Rust by following the instructions on their official [installation guide](https://www.rust-lang.org/en-US/install.html). Cannoli is both compiled with Rust 1.24.0 and outputs Rust 1.24.0 code. Changing versions with the Rust toolchain can be done with the `rustup` utility.
